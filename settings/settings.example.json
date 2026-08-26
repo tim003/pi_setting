@@ -1,0 +1,15 @@
+{
+  "defaultThinkingLevel": "medium",
+  "tuiMode": "fullscreen",
+  "defaultProjectTrust": "ask",
+  "lastChangelogVersion": "0.84.3",
+  "theme": "dark",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-4-8",
+  "packages": [
+    "npm:pi-claude-auth",
+    "git:github.com/obra/superpowers",
+    "npm:pi-subagents",
+    "npm:pi-web-access"
+  ]
+}

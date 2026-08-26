@@ -1,0 +1,31 @@
+# Secrets / credentials
+.env
+*.env
+*secret*
+*token*
+*key*
+auth.json
+credentials*
+
+# Pi runtime/generated state
+sessions/
+logs/
+cache/
+tmp/
+state/
+history/
+models-store.json
+*.sqlite
+*.sqlite3
+*.db
+
+# Installed package/vendor directories - reproduce with scripts instead
+npm/
+git/
+bin/
+node_modules/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+.idea/
