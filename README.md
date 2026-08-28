@@ -107,36 +107,59 @@ Because `/root/.pi/agent` is the `pi-agent-home` named volume (the same one that
 keeps your `/login` across runs), this key survives container restarts and
 rebuilds. **You register the public key with GitHub exactly once.**
 
-### 2. Restore SSH config automatically on every start
+### 2. Make the SSH config survive container restarts
 
-`/root/.ssh/config` is ephemeral and cannot hold the setting permanently. The
-extension [`extensions/github-ssh-persist.ts`](extensions/github-ssh-persist.ts)
-recreates it on every `session_start`.
+`/root/.ssh/config` is ephemeral, so the `github.com` stanza has to come from
+somewhere durable on every start. There are two layers, and the first is
+preferred.
 
-Install it once — extensions in `~/.pi/agent/extensions/` are auto-discovered at
-startup and live in the same persistent volume, so the extension survives too:
+#### Primary: baked into the image (survives everything)
+
+`Research/Pi/container/Dockerfile.pi` writes the stanza at build time, alongside
+the existing `fabcafe` one:
+
+```sshconfig
+Host github.com
+    HostName github.com
+    User git
+    IdentityFile /root/.pi/agent/ssh/id_ed25519_pi_github
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    PasswordAuthentication no
+```
+
+The key itself is **never baked into the image** — only the config naming it. The
+image also gains `github.com` host keys in `pi_known_hosts` (verified against
+`https://api.github.com/meta`) so `StrictHostKeyChecking yes` works, plus a
+`/root/.gitconfig` with the commit identity.
+
+Because Pi is not involved, this survives `pi update --self`, extension updates,
+and any future extension-API change. **It requires an image rebuild to take
+effect:**
+
+```bash
+cd Research/Pi/container && docker build -t pi-sandbox -f Dockerfile.pi .
+```
+
+#### Backstop: the auto-restore extension
+
+[`extensions/github-ssh-persist.ts`](extensions/github-ssh-persist.ts) does the
+same job from inside Pi, for containers running an image built before the change:
 
 ```bash
 mkdir -p /root/.pi/agent/extensions
 cp extensions/github-ssh-persist.ts /root/.pi/agent/extensions/
 ```
 
-On each start it idempotently appends the `github.com` block to
-`/root/.ssh/config`, fixes permissions, and restores the git commit identity
-(`~/.gitconfig` is ephemeral as well — without this, commits fail with
-"Please tell me who you are" in every fresh container).
+On each `session_start` it idempotently appends the `github.com` block if absent,
+fixes permissions, and restores the git identity. Once the rebuilt image is in
+use the extension finds its work already done and does nothing — harmless, and
+worth keeping as insurance.
 
-The block it writes:
+A third fallback, `ssh/bootstrap-github-ssh.sh` on the volume, does the same from
+a plain shell if both other layers ever fail.
 
-```sshconfig
-Host github.com
-  HostName github.com
-  User git
-  IdentityFile /root/.pi/agent/ssh/id_ed25519_pi_github
-  IdentitiesOnly yes
-```
-
-The image-provided `Host fabcafe` block is left untouched, and the host Mac SSH
+In all cases the `Host fabcafe` block is left untouched, and the host Mac SSH
 config at `/Users/tw/.ssh/config` is not modified.
 
 ### 3. Add the public key to GitHub
@@ -182,9 +205,29 @@ git remote -v
 git push
 ```
 
-Verified working 2026-08-28: authentication as `tim003`, read access to private
-repos, and the restore path exercised by deleting `/root/.ssh/config` and
-confirming the extension logic rebuilt it (twice, without duplicating the block).
+Verified working 2026-08-28: authentication as `tim003`, read and push access to
+private repos (this repo's own history is the evidence), and the restore path
+exercised by deleting `/root/.ssh/config` and confirming a real `pi -p` session
+rebuilt it via the extension — twice, without duplicating the block.
+
+### 4b. What survives what
+
+| Action | GitHub access survives? |
+|---|---|
+| Container exit / restart (`--rm`) | yes |
+| `pi update --extensions` | yes |
+| `pi update --self` | yes (and the update itself does not persist) |
+| `docker build` image rebuild | yes — named volumes are independent of images |
+| `docker volume rm pi-agent-home` | **no** — this is the one that destroys it |
+| Revoking the key in GitHub settings | no |
+
+The volume's independence is not theoretical: its contents are dated days
+*before* the image currently running, so it has already outlived at least one
+rebuild.
+
+Note separately that **`pi update --self` does not persist** — it writes to
+`/usr/local/lib/node_modules`, an image layer. Durable Pi upgrades require
+rebuilding the image.
 
 ### 5. Scope and blast radius
 
