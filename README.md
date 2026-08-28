@@ -227,7 +227,19 @@ rebuild.
 
 Note separately that **`pi update --self` does not persist** — it writes to
 `/usr/local/lib/node_modules`, an image layer. Durable Pi upgrades require
-rebuilding the image.
+rebuilding the image:
+
+```bash
+cd Research/Pi/container
+docker build --no-cache -t pi-sandbox -f Dockerfile.pi .
+```
+
+`--no-cache` is not optional here. Docker caches the `RUN npm install -g` layer,
+and since the Dockerfile text does not change between Pi releases, a plain
+rebuild can reuse a stale version and leave you exactly where you started.
+
+Verify afterwards with `pi --version` against
+`npm view @earendil-works/pi-coding-agent version`.
 
 ### 5. Scope and blast radius
 
@@ -253,8 +265,15 @@ Update installed Pi packages with:
 pi update --extensions
 ```
 
-Update Pi itself with:
+These live in the `pi-agent-home` volume, so package updates persist normally.
+
+**Updating Pi itself is different in a container.** `pi update --self` writes to
+an image layer and is discarded on the next `--rm` exit — it appears to work,
+then silently reverts. Rebuild the image instead:
 
 ```bash
-pi update --self
+cd Research/Pi/container
+docker build --no-cache -t pi-sandbox -f Dockerfile.pi .
 ```
+
+See §4b above for why `--no-cache` matters.
