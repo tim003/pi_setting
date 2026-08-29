@@ -13,26 +13,26 @@
     "npm:pi-web-access"
   ],
   "subagents": {
-    "defaultModel": "anthropic/claude-sonnet-4-5-20250929",
+    "defaultModel": "anthropic/claude-sonnet-4-6",
     "agentOverrides": {
       "worker": {
-        "model": "anthropic/claude-sonnet-4-5-20250929"
+        "model": "anthropic/claude-sonnet-4-6"
       },
       "reviewer": {
-        "model": "anthropic/claude-sonnet-4-5-20250929",
+        "model": "anthropic/claude-sonnet-4-6",
         "thinking": "high"
       },
       "delegate": {
-        "model": "anthropic/claude-haiku-4-5-20251001"
+        "model": "anthropic/claude-haiku-4-5"
       },
       "scout": {
-        "model": "anthropic/claude-haiku-4-5-20251001"
+        "model": "anthropic/claude-haiku-4-5"
       },
       "oracle": {
-        "model": "anthropic/claude-opus-4-5-20251101"
+        "model": "anthropic/claude-opus-4-8"
       },
       "researcher": {
-        "model": "anthropic/claude-sonnet-4-5-20250929"
+        "model": "anthropic/claude-sonnet-4-6"
       }
     }
   }

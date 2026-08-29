@@ -36,28 +36,41 @@ exists rather than letting roles inherit the session model:
 capable and most expensive one. Every mechanical subagent task would run on
 Opus unless told otherwise.
 
-**2. Dated model ids avoid a false "failed" status.** Launching a child with an
-*alias* such as `anthropic/claude-sonnet-4-5` produces a post-run check failure:
+**2. Model aliases used to produce a false "failed" status — now patched.**
+Launching a child with an *alias* such as `anthropic/claude-sonnet-4-6` produced
+a post-run check failure:
 
 ```
 model_verification_failed: child reported a different model than the launch
-candidate. Expected 'anthropic/claude-sonnet-4-5:high'
-             but observed 'claude-sonnet-4-5-20250929'
+candidate. Expected 'anthropic/claude-sonnet-4-6:high'
+             but observed 'claude-sonnet-4-6-20260115'
 ```
 
 The child boots, does the work, returns its output — and *then* the run is
-marked `failed`, because the harness compares the alias you launched with
-against the dated snapshot id the child reports. The work is fine; only the
-status is wrong. Verified 2026-08-29: four runs failed this way with aliases,
-while `anthropic/claude-sonnet-4-5-20250929` and
-`anthropic/claude-haiku-4-5-20251001` both completed cleanly.
+marked `failed`, because pi-subagents compares the alias you launched with
+against the dated snapshot id the provider actually served. The work is fine;
+only the status is wrong — but that makes run status useless as a signal and
+forces hand-verification of every result.
 
-The practical cost of the alias form is worse than cosmetic: run status stops
-being a usable signal, so you have to verify every result by hand.
+This is a bug, not a configuration choice: the same source file already defines
+`stripTrailingDateStamp()` and applies it when *resolving* a model, just not
+when *verifying* one. There is no setting to disable the check.
 
-**Use dated ids wherever the registry offers one.** Check with
-`subagent({ action: "models" })` — it prints the exact ids to copy. Changes take
-effect immediately; no Pi restart needed.
+**Fix:** [`scripts/patch-model-verification.sh`](scripts/patch-model-verification.sh)
+applies that same normalization to the verification path. It is idempotent and
+takes effect without a Pi restart. Verified 2026-08-29: with the patch,
+`anthropic/claude-haiku-4-5` and `anthropic/claude-sonnet-4-6` both complete
+cleanly as aliases (`reviewer complete (claude-sonnet-4-6 · thinking high)`).
+
+The rejected alternative was pinning every agent to a dated id. That works, but
+forces older snapshots — the newest models frequently expose no dated id at all,
+so it silently caps you to whatever last got a date stamp.
+
+`node_modules` lives in the `pi-agent-home` volume, so the patch survives
+restarts and image rebuilds. **Re-run it after `pi update --extensions`,** which
+reinstalls the package and reverts it.
+
+Use `subagent({ action: "models" })` to list the exact ids available.
 
 ## Current package setup
 
