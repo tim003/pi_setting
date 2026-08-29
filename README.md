@@ -27,6 +27,38 @@ Do not commit these from `~/.pi/agent`:
   the `.pub` half is safe to share, and it belongs in GitHub settings, not here.
 - `.env`, tokens, API keys, credentials, logs, caches, databases.
 
+## Subagent models
+
+`settings.example.json` pins a model per subagent role. Two reasons this block
+exists rather than letting roles inherit the session model:
+
+**1. Cost.** Builtin agents inherit the parent session model, which is the most
+capable and most expensive one. Every mechanical subagent task would run on
+Opus unless told otherwise.
+
+**2. Dated model ids avoid a false "failed" status.** Launching a child with an
+*alias* such as `anthropic/claude-sonnet-4-5` produces a post-run check failure:
+
+```
+model_verification_failed: child reported a different model than the launch
+candidate. Expected 'anthropic/claude-sonnet-4-5:high'
+             but observed 'claude-sonnet-4-5-20250929'
+```
+
+The child boots, does the work, returns its output — and *then* the run is
+marked `failed`, because the harness compares the alias you launched with
+against the dated snapshot id the child reports. The work is fine; only the
+status is wrong. Verified 2026-08-29: four runs failed this way with aliases,
+while `anthropic/claude-sonnet-4-5-20250929` and
+`anthropic/claude-haiku-4-5-20251001` both completed cleanly.
+
+The practical cost of the alias form is worse than cosmetic: run status stops
+being a usable signal, so you have to verify every result by hand.
+
+**Use dated ids wherever the registry offers one.** Check with
+`subagent({ action: "models" })` — it prints the exact ids to copy. Changes take
+effect immediately; no Pi restart needed.
+
 ## Current package setup
 
 This setup currently installs:
