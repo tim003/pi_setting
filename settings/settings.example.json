@@ -19,7 +19,7 @@
         "model": "anthropic/claude-sonnet-4-6"
       },
       "reviewer": {
-        "model": "anthropic/claude-sonnet-4-6",
+        "model": "anthropic/claude-opus-5",
         "thinking": "high"
       },
       "delegate": {
@@ -29,7 +29,7 @@
         "model": "anthropic/claude-haiku-4-5"
       },
       "oracle": {
-        "model": "anthropic/claude-opus-4-8"
+        "model": "anthropic/claude-opus-5"
       },
       "researcher": {
         "model": "anthropic/claude-sonnet-4-6"
