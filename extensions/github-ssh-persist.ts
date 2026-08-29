@@ -30,7 +30,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, chmodSync, symlinkSync, lstatSync, unlinkSync } from "node:fs";
 
 const KEY_PATH = "/root/.pi/agent/ssh/id_ed25519_pi_github";
 const SSH_DIR = "/root/.ssh";
@@ -43,6 +43,17 @@ Host github.com
   IdentityFile ${KEY_PATH}
   IdentitiesOnly yes
 `;
+
+// The codex CLI keeps its own auth store, separate from Pi's /login, and
+// defaults to /root/.codex - which is ephemeral container overlay, so a
+// device-auth login would have to be repeated after every restart. The
+// credential itself lives on the persistent volume; this symlink points the
+// CLI's default home at it. The Dockerfile also sets CODEX_HOME, which makes
+// this redundant on images built after 2026-08-29; it stays as a backstop for
+// older images and costs nothing when already correct.
+const CODEX_DIR = "/root/.codex";
+const CODEX_LINK = `${CODEX_DIR}/auth.json`;
+const CODEX_TARGET = "/root/.pi/agent/codex/auth.json";
 
 const GITCONFIG_PATH = "/root/.gitconfig";
 const GIT_NAME = "tim003";
@@ -87,6 +98,28 @@ export default function (pi: ExtensionAPI) {
       if (!/^\s*email\s*=/mi.test(gitconfig)) {
         writeFileSync(GITCONFIG_PATH, GITCONFIG);
         ctx.ui.notify(`Restored git identity (${GIT_NAME})`, "info");
+      }
+
+      // Point the codex CLI's default auth path at the persistent credential.
+      if (existsSync(CODEX_TARGET)) {
+        if (!existsSync(CODEX_DIR)) mkdirSync(CODEX_DIR, { recursive: true });
+        let needsLink = true;
+        try {
+          // lstat, not exists: a symlink to a missing target reports false.
+          needsLink = !lstatSync(CODEX_LINK).isSymbolicLink();
+          if (!needsLink && readFileSync(CODEX_LINK, "utf8").length === 0) needsLink = true;
+        } catch {
+          needsLink = true;
+        }
+        if (needsLink) {
+          try {
+            unlinkSync(CODEX_LINK);
+          } catch {
+            /* nothing to remove */
+          }
+          symlinkSync(CODEX_TARGET, CODEX_LINK);
+          ctx.ui.notify("Linked codex CLI auth to persistent store", "info");
+        }
       }
     } catch (err) {
       ctx.ui.notify(

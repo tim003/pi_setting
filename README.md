@@ -12,7 +12,9 @@ This repository is intentionally **not** a full copy of `~/.pi/agent`. GitHub is
 - Reinstall script for Pi packages:
   - `scripts/install-packages.sh`
 - Extensions that restore ephemeral container state on startup:
-  - `extensions/github-ssh-persist.ts`
+  - `extensions/github-ssh-persist.ts` — SSH config, git identity, codex CLI auth link
+- Script to re-apply the pi-subagents model-verification patch:
+  - `scripts/patch-model-verification.sh`
 - Notes on what should and should not be committed.
 
 ## What's intentionally excluded
@@ -71,6 +73,50 @@ restarts and image rebuilds. **Re-run it after `pi update --extensions`,** which
 reinstalls the package and reverts it.
 
 Use `subagent({ action: "models" })` to list the exact ids available.
+
+## Codex: two separate things
+
+Having one does **not** give you the other, which is what makes this confusing:
+
+| | What it is | How to authenticate |
+|---|---|---|
+| **openai-codex provider models** (`gpt-5.6-sol`, etc.) | Pi talks to the API over OAuth. No binary involved. | Pi's `/login` |
+| **`codex-exec` / `codex-exec-writer` subagents** | Shell out to the `codex` CLI binary | `codex login --device-auth` |
+
+A session can happily switch to `openai-codex/gpt-5.6-sol` while `codex-exec`
+still fails with `External CLI binary 'codex' was not found on PATH` — or, once
+installed, with `401 Unauthorized`. They are different credentials in different
+stores.
+
+### Logging in the CLI (headless container)
+
+The normal `codex login` starts a loopback server on `localhost:1455`, which a
+browser on the Mac cannot reach inside the container. Use device auth instead:
+
+```bash
+codex login --device-auth
+```
+
+It prints a URL (`https://auth.openai.com/codex/device`) and a one-time code.
+Complete it in any browser, then confirm with `codex login status`.
+
+### The persistence trap, again
+
+The CLI defaults its auth store to `/root/.codex` — **ephemeral overlay**, the
+same trap that ate the GitHub SSH key. `Dockerfile.pi` therefore sets:
+
+```dockerfile
+ENV CODEX_HOME=/root/.pi/agent/codex
+```
+
+so the credential lands on the `pi-agent-home` volume and one login lasts.
+`github-ssh-persist.ts` additionally symlinks `/root/.codex/auth.json` to that
+persistent copy, as a backstop for containers built before this change.
+
+Note `pi auth print-bearer-token --provider openai-codex | codex login
+--with-access-token` does **not** work — the CLI rejects Pi's token with
+"agent identity JWT payload is not valid JSON". The two auth systems are not
+interchangeable; log in to each separately.
 
 ## Current package setup
 
