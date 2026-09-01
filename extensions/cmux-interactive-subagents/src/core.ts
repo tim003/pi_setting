@@ -78,6 +78,20 @@ export function chooseMessageMode(name: string, registry: Map<string, ChildRecor
   return { ok: true, mode: "resume" };
 }
 
+export type ResumeSurfaceInput = {
+  name: string;
+  surface: string;
+  surfaceExists: (surface: string) => boolean;
+  createSurface: (name: string) => string;
+};
+
+export function resolveResumeSurface(input: ResumeSurfaceInput): { surface: string; recreated: boolean } {
+  if (input.surface && input.surfaceExists(input.surface)) {
+    return { surface: input.surface, recreated: false };
+  }
+  return { surface: input.createSurface(input.name), recreated: true };
+}
+
 export function shouldAutoExitOnAgentEnd(state: AutoExitState, messages: any[] | undefined): boolean {
   if (!state.autoExit || state.awaitingAnswer || state.runningChildren > 0) return false;
   if (messages) {

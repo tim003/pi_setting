@@ -46,6 +46,16 @@ export function createSurface(name: string): string {
   return surface;
 }
 
+export function surfaceExists(surface: string): boolean {
+  if (!surface) return false;
+  try {
+    execFileSync("cmux", ["read-screen", "--surface", surface, "--lines", "1"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sendText(surface: string, text: string): void {
   execFileSync("cmux", ["send", "--surface", surface, text], { encoding: "utf8" });
 }

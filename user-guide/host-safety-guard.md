@@ -18,7 +18,42 @@ Source path in this repo:
 extensions/host-safety-guard/
 ```
 
-Unit tests cover Desktop/pi-inbox access, secret-looking filenames, protected credential paths, and bash commands that mention protected paths.
+Unit tests cover Desktop/pi-inbox access, secret-looking filenames, protected credential paths, bash commands that mention protected paths, guard modes, and remembered approvals.
+
+## Prompting level
+
+The guard has two modes. Default is `high-only`, which prompts only for high-risk findings and silently allows medium-risk ones.
+
+```text
+/host-guard             # show current mode
+/host-guard strict      # also confirm medium-risk access
+/host-guard high-only   # default: prompt only for high risk
+```
+
+Startup override:
+
+```bash
+PI_HOST_GUARD_LEVEL=strict
+PI_HOST_GUARD_LEVEL=high-only
+```
+
+Changing mode clears remembered approvals for the session.
+
+## Risk tiers
+
+**High risk — always blocked, in every mode**
+
+- protected credential directories
+- secret-looking path names
+- bash commands referencing protected credential paths
+
+**Medium risk — confirmed only in `strict` mode**
+
+- non-image files in `~/Desktop/pi-inbox/`
+- Desktop paths outside `~/Desktop/pi-inbox/`
+- bash commands that merely mention Desktop
+
+In `strict` mode, approving a path is remembered for the rest of the session so the same path is not re-prompted.
 
 ## Rules
 
@@ -28,7 +63,7 @@ Unit tests cover Desktop/pi-inbox access, secret-looking filenames, protected cr
   ~/Desktop/pi-inbox/
   ```
 
-- Requires confirmation for:
+- Medium-risk access (confirmed in `strict`, allowed in `high-only`):
   - non-image files in `~/Desktop/pi-inbox/`
   - Desktop paths outside `~/Desktop/pi-inbox/`
   - bash commands that mention Desktop paths
@@ -64,6 +99,6 @@ cd ~/.pi/agent/extensions/host-safety-guard
 npm test
 ```
 
-Expected result: 7 passing tests.
+Expected result: 10 passing tests.
 
 Run `/reload` or restart Pi after changing extension code.

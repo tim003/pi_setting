@@ -2,10 +2,29 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   chooseMessageMode,
+  resolveResumeSurface,
   sanitizeName,
   shouldAutoExitOnAgentEnd,
   validateLaunch,
 } from "../src/core.ts";
+
+test("resolveResumeSurface reuses a live surface and recreates a closed one", () => {
+  const live = resolveResumeSurface({
+    name: "docs-auditor",
+    surface: "surface:7",
+    surfaceExists: (surface) => surface === "surface:7",
+    createSurface: () => "surface:99",
+  });
+  assert.deepEqual(live, { surface: "surface:7", recreated: false });
+
+  const recreated = resolveResumeSurface({
+    name: "docs-auditor",
+    surface: "surface:7",
+    surfaceExists: () => false,
+    createSurface: (name) => (name === "docs-auditor" ? "surface:99" : "surface:0"),
+  });
+  assert.deepEqual(recreated, { surface: "surface:99", recreated: true });
+});
 
 test("sanitizeName accepts stable lane-style names unchanged", () => {
   assert.equal(sanitizeName("docs-auditor-1"), "docs-auditor-1");

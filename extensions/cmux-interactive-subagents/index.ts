@@ -6,8 +6,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { discoverAgents, type AgentDefinition } from "./src/agents.ts";
-import { chooseMessageMode, validateLaunch, type ChildStatus } from "./src/core.ts";
-import { childScriptPath, cmuxUnavailableText, createSurface, hasCmux, sendCommand, sendLongCommand } from "./src/cmux.ts";
+import { chooseMessageMode, resolveResumeSurface, validateLaunch, type ChildStatus } from "./src/core.ts";
+import {
+  childScriptPath,
+  cmuxUnavailableText,
+  createSurface,
+  hasCmux,
+  sendCommand,
+  sendLongCommand,
+  surfaceExists,
+} from "./src/cmux.ts";
 import { buildPiCommand, normalizeMessageForTui, scriptWithExitTrap } from "./src/launch.ts";
 import { makeChildSessionPath, readFinalAssistantMessage, readLoadout, writeLoadout, type ChildLoadout } from "./src/session.ts";
 import { settingsOverride } from "./src/settings.ts";
@@ -260,8 +268,21 @@ export default function (pi: ExtensionAPI) {
         model: child.model,
         autoExit: true,
       };
+      const resumeSurface = resolveResumeSurface({
+        name: child.name,
+        surface: child.surface,
+        surfaceExists,
+        createSurface,
+      });
+      child.surface = resumeSurface.surface;
       sendLaunchCommand(child.surface, loadout, child.sessionFile, message, `${child.name}-resume`);
-      return toolResult(`Resumed subagent ${name}. Result will be delivered when it finishes.`, { name, status: "resumed" });
+      const surfaceNote = resumeSurface.recreated ? ` Opened a new cmux surface ${child.surface}.` : "";
+      return toolResult(`Resumed subagent ${name}.${surfaceNote} Result will be delivered when it finishes.`, {
+        name,
+        status: "resumed",
+        surface: child.surface,
+        recreatedSurface: resumeSurface.recreated,
+      });
     },
     renderCall(args, theme) {
       return new Text(theme.fg("toolTitle", "subagent_message ") + theme.fg("accent", String(args.name ?? "")), 0, 0);
