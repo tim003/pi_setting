@@ -4,6 +4,17 @@ A curated, shareable backup of my Pi coding-agent setup.
 
 This repository is intentionally **not** a full copy of `~/.pi/agent`. GitHub is used here for reproducible configuration and setup notes, not as a database for Pi runtime state.
 
+## Documentation maintenance note
+
+Pi documentation is split across the parent Obsidian `Research/Pi` folder and this nested
+`pi_setting` repo. When checking or updating relevant Pi Markdown, include **both**:
+
+- `Research/Pi/*.md`
+- `Research/Pi/pi_setting/*.md`
+
+This repo has its own Git remote and should be committed/pushed from here. The parent
+`Research/Pi/*.md` files belong to the vault root repo, which currently has no remote.
+
 ## What's included
 
 - Sanitized example settings:
