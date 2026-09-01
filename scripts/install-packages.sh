@@ -18,10 +18,25 @@ pi install git:github.com/HazAT/pi-interactive-subagents
 pi install git:github.com/amosblomqvist/pi-observational-memory
 
 mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills"
+
 rm -rf "$PI_DIR/extensions/web-fetch"
 cp -R "$REPO_DIR/extensions/web-fetch" "$PI_DIR/extensions/web-fetch"
 (
   cd "$PI_DIR/extensions/web-fetch"
+  rm -rf node_modules
+  npm install --omit=dev
+)
+
+# Stage the custom cmux subagent provider outside auto-discovery by default.
+# It registers `subagent`, so enabling it while npm:pi-subagents is active creates
+# duplicate/conflicting tools. Copy it into extensions/ only during the explicit
+# cmux rollout after disabling npm:pi-subagents and verifying cmux availability.
+mkdir -p "$PI_DIR/extensions-disabled"
+rm -rf "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
+cp -R "$REPO_DIR/extensions/cmux-interactive-subagents" "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
+(
+  cd "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
+  rm -rf node_modules
   npm install --omit=dev
 )
 
@@ -32,7 +47,8 @@ done
 
 cat <<'EOF'
 
-Installed package sources plus local web-fetch and selected skills.
+Installed package sources plus local web-fetch, staged cmux-interactive-subagents, and selected skills.
 Copy settings/settings.example.json to your Pi settings or merge its package filters manually.
+cmux-interactive-subagents is staged under extensions-disabled/; move it to extensions/ only in a Pi process with direct cmux + CMUX_SOCKET_PATH access and after disabling npm:pi-subagents.
 Run /reload inside Pi to load changed extension code.
 EOF

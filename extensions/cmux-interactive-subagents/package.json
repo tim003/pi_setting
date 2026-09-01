@@ -1,0 +1,21 @@
+{
+  "name": "cmux-interactive-subagents",
+  "private": true,
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "typebox": "^1.0.55"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.4",
+    "@earendil-works/pi-tui": "^0.84.4",
+    "tsx": "^4.20.5"
+  }
+}

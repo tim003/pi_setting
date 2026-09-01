@@ -32,3 +32,6 @@ node_modules/
 
 # Pi observational-memory output
 .memory/
+
+# Local extension-generated launch scripts
+.generated/

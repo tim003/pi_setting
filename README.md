@@ -4,16 +4,26 @@ A curated, shareable backup of my Pi coding-agent setup.
 
 This repository is intentionally **not** a full copy of `~/.pi/agent`. GitHub is used here for reproducible configuration and setup notes, not as a database for Pi runtime state.
 
+## Current direction — 2026-09-01
+
+Pi now runs directly on the macOS host as the primary runtime. See the parent vault guide: `../host-migration.md`.
+
+Verified 2026-09-01: host Pi `0.84.4`, host tools (`python3`, `ffmpeg`, current `yt-dlp`), GitHub SSH auth, Claude Code-backed Anthropic OAuth, direct cmux visibility, and custom cmux interactive subagent launch/resume. The old Docker image/volume remain only as temporary rollback history until cleanup.
+
 ## Documentation maintenance note
 
-Pi documentation is split across the parent Obsidian `Research/Pi` folder and this nested
+Pi documentation is split across the parent Obsidian `Pi` folder and this nested
 `pi_setting` repo. When checking or updating relevant Pi Markdown, include **both**:
 
-- `Research/Pi/*.md`
-- `Research/Pi/pi_setting/*.md`
+- `Pi/*.md`
+- `Pi/pi_setting/*.md`
 
 This repo has its own Git remote and should be committed/pushed from here. The parent
-`Research/Pi/*.md` files belong to the vault root repo, which currently has no remote.
+`Pi/*.md` files belong to the vault root repo, which currently has no remote.
+
+## User guides
+
+Use [`user-guide/`](user-guide/) as the operational menu for installed/planned Pi skills and extensions. It contains one Markdown guide per skill or extension area, including subagents, web fetch, observational memory, YouTube transcripts, PDF reading, web debugging, updates, and rollback.
 
 ## What's included
 
@@ -25,6 +35,7 @@ This repo has its own Git remote and should be committed/pushed from here. The p
 - Extensions:
   - `extensions/github-ssh-persist.ts` — SSH config, git identity, codex CLI auth link
   - `extensions/web-fetch/` — Amos-inspired `web_fetch` URL-to-clean-Markdown tool, vendored locally with dependencies
+  - `extensions/cmux-interactive-subagents/` — custom cmux-only interactive subagent provider; stage disabled by default and activate only after disabling `npm:pi-subagents`
 - Script to re-apply the pi-subagents model-verification patch:
   - `scripts/patch-model-verification.sh`
 - Selected skills vendored from `amosblomqvist/pi-config`:
@@ -32,6 +43,8 @@ This repo has its own Git remote and should be committed/pushed from here. The p
   - `skills/pdf-reader/`
   - `skills/web-debug/`
   - `skills/youtube-transcript/`
+- User guides:
+  - `user-guide/README.md`
 - Upgrade notes:
   - `UPGRADE_INTERACTIVE_MEMORY.md`
 - Notes on what should and should not be committed.
@@ -99,9 +112,7 @@ The rejected alternative was pinning every agent to a dated id. That works, but
 forces older snapshots — the newest models frequently expose no dated id at all,
 so it silently caps you to whatever last got a date stamp.
 
-`node_modules` lives in the `pi-agent-home` volume, so the patch survives
-restarts and image rebuilds. **Re-run it after `pi update --extensions`,** which
-reinstalls the package and reverts it.
+On the historical container runtime, `node_modules` lived in the `pi-agent-home` volume, so the patch survived restarts and image rebuilds. On the host runtime, package installs live under `~/.pi/agent/npm/`. **Re-run it after `pi update --extensions`,** which reinstalls the package and reverts it.
 
 Use `subagent({ action: "models" })` to list the exact ids available.
 
@@ -165,10 +176,10 @@ Verified versions after the 2026-09-01 package update:
 | Package | Version / ref |
 |---|---|
 | `pi-claude-auth` | `0.1.3` |
-| `pi-subagents` | `0.62.0` — still active; verified working provider for current async subagents |
+| `pi-subagents` | `0.62.0` — installed but filtered after activating custom cmux interactive subagents |
 | `pi-web-access` | `0.27.0` |
 | `github.com/obra/superpowers` | `b36e082` |
-| `github.com/HazAT/pi-interactive-subagents` | installed but extension disabled until Docker↔cmux control is solved |
+| `github.com/HazAT/pi-interactive-subagents` | installed but extension disabled; custom cmux provider is staged for host Pi instead |
 | `github.com/amosblomqvist/pi-observational-memory` | installed; gated off per session until `/om on` |
 
 Or run:
@@ -188,11 +199,11 @@ cp settings/settings.example.json "$PI_DIR/settings.json"
 cp settings/web-search.example.json "$PI_DIR/web-search.json"
 ```
 
-Then authenticate locally with your own accounts/keys, for example by running Pi and using `/login`.
+Then authenticate locally with your own accounts/keys. Claude is authenticated through Claude Code plus `pi-claude-auth`: run `claude auth login --claudeai` first, then verify `pi auth check --provider anthropic --model claude-haiku-4-5 --json`. Other providers can still use Pi's `/login` flow.
 
-## GitHub push access from Pi/container
+## GitHub push access from Pi
 
-For this setup, Pi runs inside a container. The host Mac uses 1Password SSH agent, but that agent is not automatically available inside the container. To let Pi push commits directly, use a dedicated container SSH key rather than copying a personal/private host key into the container.
+For the current host setup, Pi runs as the host user and can use host Git/SSH configuration. During the old container setup, Pi used a dedicated container SSH key rather than copying a personal/private host key into the container; those notes remain below as historical rollback context.
 
 > **Corrected 2026-08-28 — the key must NOT live in `/root/.ssh`.**
 > The container runs with `docker run --rm`, so `/root/.ssh` is part of the
@@ -248,7 +259,7 @@ preferred.
 
 #### Primary: baked into the image (survives everything)
 
-`Research/Pi/container/Dockerfile.pi` writes the stanza at build time, alongside
+`Pi/container/Dockerfile.pi` writes the stanza at build time, alongside
 the existing `fabcafe` one:
 
 ```sshconfig
@@ -271,7 +282,7 @@ and any future extension-API change. **It requires an image rebuild to take
 effect:**
 
 ```bash
-cd Research/Pi/container && docker build -t pi-sandbox -f Dockerfile.pi .
+cd Pi/container && docker build -t pi-sandbox -f Dockerfile.pi .
 ```
 
 #### Backstop: the auto-restore extension
@@ -363,7 +374,7 @@ Note separately that **`pi update --self` does not persist** — it writes to
 rebuilding the image:
 
 ```bash
-cd Research/Pi/container
+cd Pi/container
 docker build --no-cache -t pi-sandbox -f Dockerfile.pi .
 ```
 
@@ -405,9 +416,10 @@ However, it is **disabled in the current live settings**:
 ```
 
 Reason: its cmux backend expects both `CMUX_SOCKET_PATH` and a runnable `cmux` command inside
-the Pi process. In this setup, Pi runs inside a Linux Docker container while cmux is a macOS
-host app, so the extension cannot create cmux panes as-is. Keep the verified
-`npm:pi-subagents` extension active until a Docker↔cmux bridge exists.
+the Pi process. In the old Docker setup, Pi ran inside a Linux container while cmux is a macOS
+host app, so the extension could not create cmux panes as-is.
+
+Current direction: do **not** build a Docker↔cmux bridge. Migrate Pi back to the macOS host, then activate the custom staged `cmux-interactive-subagents` extension only after host Pi can see `cmux` and `CMUX_SOCKET_PATH`.
 
 Do not enable both `npm:pi-subagents` and `HazAT/pi-interactive-subagents` extensions at the
 same time: both register a `subagent` tool. After changing package/resource settings, run
@@ -444,7 +456,10 @@ Remove a package from settings and disk:
 ```bash
 pi remove git:github.com/HazAT/pi-interactive-subagents
 pi remove git:github.com/amosblomqvist/pi-observational-memory
-pi remove npm:pi-subagents
+# Keep npm:pi-subagents installed if using cmux-interactive-subagents;
+# the custom provider reads its packaged Markdown agent definitions.
+# Disable its extension resources instead of removing it.
+# pi remove npm:pi-subagents
 ```
 
 Remove a copied local extension/skill by deleting or renaming it under
@@ -519,7 +534,7 @@ an image layer and is discarded on the next `--rm` exit — it appears to work,
 then silently reverts. Rebuild the image instead:
 
 ```bash
-cd Research/Pi/container
+cd Pi/container
 docker build --no-cache -t pi-sandbox -f Dockerfile.pi .
 ```
 
