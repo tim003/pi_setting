@@ -20,9 +20,13 @@ Implemented as a local vendored extension:
 extensions/cmux-interactive-subagents/
 ```
 
-It is safe to copy/install, but only enable it in a Pi process with direct access to `cmux` and `CMUX_SOCKET_PATH`.
+It is active in host Pi at:
 
-Current direction: migrate Pi to the macOS host and activate this there. The installed `git:github.com/HazAT/pi-interactive-subagents` package remains disabled; the old Dockerized setup could not see the host macOS `cmux` socket or command.
+```text
+~/.pi/agent/extensions/cmux-interactive-subagents/
+```
+
+`npm:pi-subagents` remains installed but extension-disabled to avoid duplicate `subagent` tools; the local cmux extension is the active subagent provider. `git:github.com/HazAT/pi-interactive-subagents` is no longer installed by the base script.
 
 ## V1 scope
 
@@ -120,7 +124,7 @@ A child session should close automatically after Pi reports `agent_settled` when
 
 The child's final assistant message is the result returned to the parent.
 
-## Install / stage safely
+## Install safely
 
 From `pi_setting`:
 
@@ -128,25 +132,25 @@ From `pi_setting`:
 ./scripts/install-packages.sh
 ```
 
-The script stages this extension outside auto-discovery:
+The script installs this extension as the active host-Pi subagent provider:
 
 ```text
-${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions-disabled/cmux-interactive-subagents/
+${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/cmux-interactive-subagents/
 ```
 
-This avoids duplicate `subagent` tools while `npm:pi-subagents` is still active.
+It also installs `npm:pi-subagents` for packaged Markdown agent definitions, but `settings.example.json` disables that package's extension resources so only the local cmux provider registers `subagent`.
 
-To manually stage:
+To manually install the local provider:
 
 ```bash
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
-mkdir -p "$PI_DIR/extensions-disabled"
-rm -rf "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
-cp -R extensions/cmux-interactive-subagents "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
-(cd "$PI_DIR/extensions-disabled/cmux-interactive-subagents" && npm install --omit=dev)
+mkdir -p "$PI_DIR/extensions"
+rm -rf "$PI_DIR/extensions/cmux-interactive-subagents"
+cp -R extensions/cmux-interactive-subagents "$PI_DIR/extensions/cmux-interactive-subagents"
+(cd "$PI_DIR/extensions/cmux-interactive-subagents" && npm install --omit=dev)
 ```
 
-To activate, move/copy it to `$PI_DIR/extensions/cmux-interactive-subagents` only after disabling `npm:pi-subagents` and verifying cmux availability.
+The launcher explicitly loads `~/.pi/agent/npm/node_modules/pi-claude-auth/src/index.ts` into child Pi processes before `child-helper.ts`. Keep `pi-claude-auth` installed and re-run `/reload` after changes so Anthropic child subagents use Claude Code OAuth correctly despite `--no-extensions` isolation.
 
 ## Test helpers
 
@@ -158,19 +162,7 @@ node --import tsx -e "await import('./index.ts'); await import('./child-helper.t
 
 ## Live rollout checklist
 
-Use the activation script from a Pi environment with direct cmux access:
-
-```bash
-./scripts/activate-cmux-interactive-subagents.sh
-```
-
-The script:
-
-1. Fails closed unless `cmux` is on `PATH` and `CMUX_SOCKET_PATH` is set.
-2. Backs up `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json` under `update-tracking/`.
-3. Stages and then moves the local extension into `${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/extensions/cmux-interactive-subagents/`.
-4. Runs `npm install --omit=dev` in the live extension directory.
-5. Disables `npm:pi-subagents` and HazAT interactive-subagents extension resources in settings to avoid duplicate `subagent` tools.
+For normal host Pi installs, use `./scripts/install-packages.sh` and copy/merge `settings/settings.example.json` so `npm:pi-subagents` is extension-disabled. The older activation script remains as a guarded repair/rollback-era helper for existing installs; the base install path no longer requires a separate cmux activation step.
 
 Then run `/reload` or restart Pi.
 

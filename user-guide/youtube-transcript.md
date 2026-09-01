@@ -13,12 +13,12 @@ skills/youtube-transcript/
 Live install path:
 
 ```text
-/root/.pi/agent/skills/youtube-transcript/
+~/.pi/agent/skills/youtube-transcript/
 ```
 
 ## Requirements
 
-The Docker image should include:
+The host Pi setup should include:
 
 - `python3`
 - `python3-venv`
@@ -26,12 +26,12 @@ The Docker image should include:
 - `ffmpeg`
 - current `yt-dlp` from pip
 
-These are installed by `Pi/container/Dockerfile.pi`.
+These were verified on the host during the 2026-09-01 migration.
 
 ## Usage
 
 ```bash
-python3 /root/.pi/agent/skills/youtube-transcript/fetch_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
+python3 ~/.pi/agent/skills/youtube-transcript/fetch_transcript.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 Output is JSON with:
@@ -53,11 +53,11 @@ Expected output includes Python and yt-dlp versions.
 
 - The skill prefers manual English captions and falls back to auto-generated English captions.
 - Some videos disable captions or block caption download.
-- Debian's `yt-dlp` package can lag behind YouTube changes; use the pip-installed current version from the Dockerfile.
+- Keep `yt-dlp` current with pip/Homebrew when YouTube changes break transcript extraction.
 
 ## Example verified video
 
-The video `https://www.youtube.com/watch?v=iKwPaB5TUdI` was successfully checked after the Docker image rebuild. Title:
+The video `https://www.youtube.com/watch?v=iKwPaB5TUdI` was successfully checked during host migration verification. Title:
 
 ```text
 Pi Setup After 6 Months of Use

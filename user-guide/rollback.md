@@ -5,13 +5,13 @@
 A settings backup captured before the 2026-09-01 interactive/memory migration is stored locally at:
 
 ```text
-/root/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json
+~/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json
 ```
 
 Restore it with:
 
 ```bash
-cp /root/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json /root/.pi/agent/settings.json
+cp ~/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json ~/.pi/agent/settings.json
 ```
 
 Then run `/reload` or restart Pi.
@@ -22,12 +22,13 @@ Create a new timestamped backup:
 
 ```bash
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-mkdir -p /root/.pi/agent/update-tracking
-cp /root/.pi/agent/settings.json "/root/.pi/agent/update-tracking/settings-before-change-$stamp.json"
+mkdir -p ~/.pi/agent/update-tracking
+backup="$HOME/.pi/agent/update-tracking/settings-before-change-$stamp.json"
+cp "$HOME/.pi/agent/settings.json" "$backup"
 if command -v sha256sum >/dev/null 2>&1; then
-  sha256sum "/root/.pi/agent/update-tracking/settings-before-change-$stamp.json"
+  sha256sum "$backup"
 else
-  shasum -a 256 "/root/.pi/agent/update-tracking/settings-before-change-$stamp.json"
+  shasum -a 256 "$backup"
 fi
 ```
 
@@ -39,10 +40,10 @@ Use Pi config UI:
 pi config
 ```
 
-or edit `/root/.pi/agent/settings.json` so the package entry has no active extensions, for example:
+or edit `~/.pi/agent/settings.json` so the package entry has no active extensions, for example:
 
 ```json
-{ "source": "git:github.com/HazAT/pi-interactive-subagents", "extensions": [] }
+{ "source": "npm:pi-subagents", "extensions": [] }
 ```
 
 Run `/reload` after changing settings.
@@ -50,20 +51,21 @@ Run `/reload` after changing settings.
 ## Remove a package
 
 ```bash
-pi remove git:github.com/HazAT/pi-interactive-subagents
 pi remove git:github.com/amosblomqvist/pi-observational-memory
 pi remove npm:pi-subagents
 ```
 
 Keep `npm:pi-subagents` installed when using the custom cmux provider; the custom provider reads its packaged Markdown definitions for familiar Pi-backed agents such as `delegate`, `worker`, `reviewer`, `scout`, `researcher`, and `oracle`. Disable its extension resources instead of removing the package. Only remove `npm:pi-subagents` if another source of agent definitions is available or you intentionally want no subagent tool.
 
+`git:github.com/HazAT/pi-interactive-subagents` is not installed by the current base script; if it exists from an older setup, remove it with `pi remove git:github.com/HazAT/pi-interactive-subagents`.
+
 ## Remove local copied resources
 
 Delete or rename resources under:
 
 ```text
-/root/.pi/agent/extensions/
-/root/.pi/agent/skills/
+~/.pi/agent/extensions/
+~/.pi/agent/skills/
 ```
 
 Then run `/reload`.

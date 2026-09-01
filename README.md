@@ -23,7 +23,7 @@ This repo has its own Git remote and should be committed/pushed from here. The p
 
 ## User guides
 
-Use [`user-guide/`](user-guide/) as the operational menu for installed/planned Pi skills and extensions. It contains one Markdown guide per skill or extension area, including subagents, web fetch, observational memory, YouTube transcripts, PDF reading, web debugging, updates, and rollback.
+Use [`user-guide/`](user-guide/) as the operational menu for installed/planned Pi skills and extensions. It contains one Markdown guide per skill or extension area, including subagents, host safety, bash guard, browser, prompt snippets, web fetch, observational memory, YouTube transcripts, PDF reading, web debugging, updates, and rollback.
 
 ## What's included
 
@@ -34,8 +34,13 @@ Use [`user-guide/`](user-guide/) as the operational menu for installed/planned P
   - `scripts/install-packages.sh`
 - Extensions:
   - `extensions/github-ssh-persist.ts` — SSH config, git identity, codex CLI auth link
+  - `extensions/host-safety-guard/` — host filesystem boundary guard; allows screenshot/image reads from `~/Desktop/pi-inbox`, blocks credential paths
+  - `extensions/bash-guard/` — Amos bash command risk guard
+  - `extensions/ask-user-question/` — Amos interactive structured-question tool
+  - `extensions/browser/` — Amos Playwright browser tools, disabled until `/browser on`
+  - `extensions/prompt-snippets/` — Amos temporary prompt snippet toggles
   - `extensions/web-fetch/` — Amos-inspired `web_fetch` URL-to-clean-Markdown tool, vendored locally with dependencies
-  - `extensions/cmux-interactive-subagents/` — custom cmux-only interactive subagent provider; stage disabled by default and activate only after disabling `npm:pi-subagents`
+  - `extensions/cmux-interactive-subagents/` — custom cmux-only interactive subagent provider; active on host Pi after disabling duplicate subagent providers
 - Script to re-apply the pi-subagents model-verification patch:
   - `scripts/patch-model-verification.sh`
 - Selected skills vendored from `amosblomqvist/pi-config`:
@@ -57,7 +62,7 @@ Do not commit these from `~/.pi/agent`:
 - `models-store.json` — runtime provider/model cache.
 - `sessions/` — conversation history.
 - `npm/`, `git/`, `bin/` — installed/generated package directories.
-- `ssh/` — the persistent container SSH private key. Never commit this; only
+- `ssh/` — the persistent Pi SSH private key. Never commit this; only
   the `.pub` half is safe to share, and it belongs in GitHub settings, not here.
 - `.env`, tokens, API keys, credentials, logs, caches, databases.
 
@@ -130,10 +135,9 @@ still fails with `External CLI binary 'codex' was not found on PATH` — or, onc
 installed, with `401 Unauthorized`. They are different credentials in different
 stores.
 
-### Logging in the CLI (headless container)
+### Logging in the CLI on host macOS
 
-The normal `codex login` starts a loopback server on `localhost:1455`, which a
-browser on the Mac cannot reach inside the container. Use device auth instead:
+Use device auth when you want a browser-independent login flow:
 
 ```bash
 codex login --device-auth
@@ -142,18 +146,15 @@ codex login --device-auth
 It prints a URL (`https://auth.openai.com/codex/device`) and a one-time code.
 Complete it in any browser, then confirm with `codex login status`.
 
-### The persistence trap, again
+### Host credential location
 
-The CLI defaults its auth store to `/root/.codex` — **ephemeral overlay**, the
-same trap that ate the GitHub SSH key. `Dockerfile.pi` therefore sets:
+Set `CODEX_HOME` to keep the Codex CLI auth store under the host Pi runtime:
 
-```dockerfile
-ENV CODEX_HOME=/root/.pi/agent/codex
+```bash
+export CODEX_HOME="$HOME/.pi/agent/codex"
 ```
 
-so the credential lands on the `pi-agent-home` volume and one login lasts.
-`github-ssh-persist.ts` additionally symlinks `/root/.codex/auth.json` to that
-persistent copy, as a backstop for containers built before this change.
+The old Docker `/root/.codex` symlink notes are historical rollback context only.
 
 Note `pi auth print-bearer-token --provider openai-codex | codex login
 --with-access-token` does **not** work — the CLI rejects Pi's token with
@@ -169,6 +170,9 @@ pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
 pi install npm:pi-subagents
 pi install npm:pi-web-access
+pi install git:github.com/amosblomqvist/pi-observational-memory
+# plus local extensions/skills copied by ./scripts/install-packages.sh,
+# including active local cmux-interactive-subagents
 ```
 
 Verified versions after the 2026-09-01 package update:
@@ -176,11 +180,13 @@ Verified versions after the 2026-09-01 package update:
 | Package | Version / ref |
 |---|---|
 | `pi-claude-auth` | `0.1.3` |
-| `pi-subagents` | `0.62.0` — installed but filtered after activating custom cmux interactive subagents |
+| `pi-subagents` | `0.62.0` — installed for packaged Markdown agent definitions, with extension resources disabled while local cmux provider is active |
 | `pi-web-access` | `0.27.0` |
 | `github.com/obra/superpowers` | `b36e082` |
-| `github.com/HazAT/pi-interactive-subagents` | installed but extension disabled; custom cmux provider is staged for host Pi instead |
 | `github.com/amosblomqvist/pi-observational-memory` | installed; gated off per session until `/om on` |
+| Local cmux extension | `cmux-interactive-subagents` installed live; child launcher explicitly loads `pi-claude-auth` for Anthropic OAuth |
+| Local Amos extensions | `ask-user-question`, `bash-guard`, `browser`, `prompt-snippets`, `web-fetch` installed live |
+| Local safety extension | `host-safety-guard` installed live; `~/Desktop/pi-inbox` created |
 
 Or run:
 
@@ -403,27 +409,17 @@ Revoke at any time via GitHub → Settings → SSH and GPG keys → delete
 
 ## Interactive subagents and observational memory
 
-The cmux-capable upstream is installed for evaluation:
+The active subagent provider on host Pi is the local custom extension:
 
-```bash
-pi install git:github.com/HazAT/pi-interactive-subagents
+```text
+~/.pi/agent/extensions/cmux-interactive-subagents/
 ```
 
-However, it is **disabled in the current live settings**:
+It replaces the old evaluation package `git:github.com/HazAT/pi-interactive-subagents`, which is no longer installed by the base setup script. `npm:pi-subagents` remains installed for packaged Markdown agent definitions, but its extension resources must stay disabled so only the local cmux provider registers `subagent`.
 
-```json
-{ "source": "git:github.com/HazAT/pi-interactive-subagents", "extensions": [] }
-```
+The local launcher starts child Pi processes with `--no-extensions` for isolation, then explicitly loads `~/.pi/agent/npm/node_modules/pi-claude-auth/src/index.ts` before its child-helper extension. Keep `pi-claude-auth` installed so Anthropic child subagents use Claude Code OAuth correctly.
 
-Reason: its cmux backend expects both `CMUX_SOCKET_PATH` and a runnable `cmux` command inside
-the Pi process. In the old Docker setup, Pi ran inside a Linux container while cmux is a macOS
-host app, so the extension could not create cmux panes as-is.
-
-Current direction: do **not** build a Docker↔cmux bridge. Migrate Pi back to the macOS host, then activate the custom staged `cmux-interactive-subagents` extension only after host Pi can see `cmux` and `CMUX_SOCKET_PATH`.
-
-Do not enable both `npm:pi-subagents` and `HazAT/pi-interactive-subagents` extensions at the
-same time: both register a `subagent` tool. After changing package/resource settings, run
-`/reload` or restart Pi.
+After changing package/resource settings, run `/reload` or restart Pi.
 
 Observational memory is installed from:
 
@@ -454,7 +450,6 @@ pi config -l   # project-local config UI
 Remove a package from settings and disk:
 
 ```bash
-pi remove git:github.com/HazAT/pi-interactive-subagents
 pi remove git:github.com/amosblomqvist/pi-observational-memory
 # Keep npm:pi-subagents installed if using cmux-interactive-subagents;
 # the custom provider reads its packaged Markdown agent definitions.

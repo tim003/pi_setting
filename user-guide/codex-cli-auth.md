@@ -8,14 +8,14 @@ The `codex-exec` / `codex-exec-writer` subagents shell out to the external `code
 
 Verified 2026-09-01:
 
-- `CODEX_HOME=/root/.pi/agent/codex`
-- `/root/.codex/auth.json` symlinks to `/root/.pi/agent/codex/auth.json`
+- `CODEX_HOME=~/.pi/agent/codex`
+- `CODEX_HOME=~/.pi/agent/codex` is used by the host `codex` CLI
 - auth hash survived package updates and `/reload`
 - Codex smoke tests passed
 
 ## Login
 
-Inside the container:
+From macOS Terminal:
 
 ```bash
 codex login --device-auth
@@ -29,13 +29,13 @@ codex login status
 
 ## Persistence
 
-The Dockerfile sets:
+Host Pi should be started with:
 
-```dockerfile
-ENV CODEX_HOME=/root/.pi/agent/codex
+```bash
+export CODEX_HOME="$HOME/.pi/agent/codex"
 ```
 
-This keeps Codex CLI credentials on the persistent `pi-agent-home` volume.
+This keeps Codex CLI credentials under the host Pi runtime directory instead of scattering them into unrelated shell profiles or project folders.
 
 ## Caveats
 

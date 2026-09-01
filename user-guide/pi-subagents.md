@@ -2,15 +2,15 @@
 
 ## Purpose
 
-`npm:pi-subagents` is the currently active subagent provider in this Dockerized Pi setup.
+`npm:pi-subagents` is installed for packaged Markdown agent definitions and rollback/reference, but its extension resources are disabled. The active live `subagent` provider is the local cmux interactive subagent extension.
 
-It provides the `subagent` tool used for delegation to builtin/custom agents, including async runs, reviews, and external CLI adapters such as `codex-exec` when configured.
+When enabled, `pi-subagents` provides a `subagent` tool for delegation to builtin/custom agents, including async runs, reviews, and external CLI adapters such as `codex-exec` when configured. In this host setup, the local cmux provider owns the live `subagent` tool instead.
 
 ## Current status
 
-Active and verified 2026-09-01 at version `0.62.0`.
+Installed and verified 2026-09-01 at version `0.62.0`, but extension resources are filtered/disabled in the live host Pi settings to avoid duplicate `subagent` tools.
 
-`git:github.com/HazAT/pi-interactive-subagents` is installed but disabled and must not be enabled at the same time because both providers register a `subagent` tool.
+`git:github.com/HazAT/pi-interactive-subagents` is no longer installed by the base script. Use `cmux-interactive-subagents.md` for the active provider.
 
 ## Common usage
 

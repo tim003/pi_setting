@@ -1,0 +1,15 @@
+{
+	"name": "pi-bash-guard",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"shell-quote": "^1.10.0",
+		"@earendil-works/pi-coding-agent": "^0.84.4",
+		"@earendil-works/pi-tui": "^0.84.4"
+	},
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	}
+}

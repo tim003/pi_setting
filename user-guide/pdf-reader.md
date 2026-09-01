@@ -13,12 +13,12 @@ skills/pdf-reader/
 Live install path:
 
 ```text
-/root/.pi/agent/skills/pdf-reader/
+~/.pi/agent/skills/pdf-reader/
 ```
 
 ## Requirements
 
-The skill uses Python helper scripts. The Docker image includes Python 3 and venv support.
+The skill uses Python helper scripts. The host Pi setup uses macOS Python 3.11 with venv support.
 
 If a PDF task fails because a Python package is missing, inspect the skill scripts and create/install the required virtual environment before retrying.
 

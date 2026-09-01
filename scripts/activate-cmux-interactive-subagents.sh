@@ -75,7 +75,7 @@ if (disabledPiSubagents === 0) {
   console.error('ERROR: did not find npm:pi-subagents in settings.packages; refusing to activate because duplicate subagent provider state cannot be verified. Disable existing subagent providers manually first, or add npm:pi-subagents as a disabled package entry.');
   process.exit(1);
 }
-console.error(`Disabled package extension resources: npm:pi-subagents=${disabledPiSubagents}, HazAT/pi-interactive-subagents=${disabledHazatInteractive}`);
+console.error(`Disabled package extension resources: npm:pi-subagents=${disabledPiSubagents}, legacy HazAT/pi-interactive-subagents=${disabledHazatInteractive}`);
 fs.writeFileSync(outPath, JSON.stringify(settings, null, 2) + '\n');
 NODE
 
@@ -89,7 +89,7 @@ cat <<EOF
 Activated local cmux-interactive-subagents at:
 $DEST
 
-npm:pi-subagents and HazAT interactive-subagents extension resources were disabled in settings.
+npm:pi-subagents extension resources were disabled in settings; any legacy HazAT interactive-subagents entry was disabled if present.
 Run /reload or restart Pi, then smoke test:
   1. subagents_list
   2. subagent({"name":"cmux-smoke-test","agent":"delegate","task":"Say exactly: cmux custom subagent ok"})

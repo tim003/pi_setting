@@ -20,16 +20,16 @@ Files update immediately on disk, but the current Pi process may keep already-lo
 
 or restart Pi to load changed extension code.
 
-## Update Pi itself in Docker
+## Update Pi itself on host macOS
 
-`pi update --self` does not persist in this container setup because it writes into the image layer. Rebuild the Docker image instead:
+Pi is installed globally with npm under the active Node installation. To update Pi itself:
 
 ```bash
-cd Pi/container
-docker build --no-cache -t pi-sandbox -f Dockerfile.pi .
+npm install -g @earendil-works/pi-coding-agent@latest
+pi --version
 ```
 
-Use `--no-cache` so Docker does not reuse a stale global npm install layer.
+Then restart Pi. Keep the old Docker wrapper/image/volume only as temporary rollback material until you are comfortable deleting it.
 
 ## Verify after updates
 
@@ -38,9 +38,9 @@ Recommended checks:
 ```bash
 pi --version
 pi list
-sha256sum /root/.pi/agent/codex/auth.json
-readlink -f /root/.codex/auth.json
+shasum -a 256 ~/.pi/agent/codex/auth.json
 ssh -T git@github.com
+ls -ld ~/Desktop/pi-inbox
 ```
 
 Then run a simple subagent/Codex smoke test if those tools are part of the update.
@@ -51,9 +51,14 @@ Then run a simple subagent/Codex smoke test if those tools are part of the updat
 - `pi-subagents` `0.62.0`
 - `pi-web-access` `0.27.0`
 - `github.com/obra/superpowers` `b36e082`
-- `github.com/HazAT/pi-interactive-subagents` installed but disabled
 - `github.com/amosblomqvist/pi-observational-memory` installed
+- `github.com/HazAT/pi-interactive-subagents` no longer installed by the base script
+- Local cmux extension installed active: `cmux-interactive-subagents` with child `pi-claude-auth` loading for Anthropic OAuth
+- Local Amos extensions installed: `ask-user-question`, `bash-guard`, `browser`, `prompt-snippets`, `web-fetch`
+- Local safety extension installed: `host-safety-guard`
 
-## Important caveat
+## Important caveats
 
-Re-run `scripts/patch-model-verification.sh` after updating `pi-subagents`, because package updates reinstall the source and remove the local model-alias verification patch.
+- Run `./scripts/install-packages.sh` after changing vendored local extensions or skills in this repo.
+- Run `/reload` or restart Pi after extension code changes.
+- If `pi-subagents` is re-enabled for rollback, re-run `scripts/patch-model-verification.sh` after updating it because package updates reinstall the source and remove the local model-alias verification patch.

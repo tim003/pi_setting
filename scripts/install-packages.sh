@@ -10,32 +10,43 @@ PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 
 pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
-# Kept for skills/reference, but disable its extension in settings.example.json
-# before using HazAT's interactive subagents to avoid duplicate `subagent` tools.
+# Kept for packaged Markdown agent definitions/reference. Disable its extension
+# resources in settings.example.json because the local cmux provider registers
+# the active `subagent` tool on host Pi.
 pi install npm:pi-subagents
 pi install npm:pi-web-access
-pi install git:github.com/HazAT/pi-interactive-subagents
 pi install git:github.com/amosblomqvist/pi-observational-memory
 
-mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills"
+mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$HOME/Desktop/pi-inbox"
 
-rm -rf "$PI_DIR/extensions/web-fetch"
-cp -R "$REPO_DIR/extensions/web-fetch" "$PI_DIR/extensions/web-fetch"
-(
-  cd "$PI_DIR/extensions/web-fetch"
-  rm -rf node_modules
-  npm install --omit=dev
-)
+for extension in ask-user-question host-safety-guard prompt-snippets web-fetch bash-guard browser; do
+  rm -rf "$PI_DIR/extensions/$extension"
+  cp -R "$REPO_DIR/extensions/$extension" "$PI_DIR/extensions/$extension"
+done
 
-# Stage the custom cmux subagent provider outside auto-discovery by default.
-# It registers `subagent`, so enabling it while npm:pi-subagents is active creates
-# duplicate/conflicting tools. Copy it into extensions/ only during the explicit
-# cmux rollout after disabling npm:pi-subagents and verifying cmux availability.
-mkdir -p "$PI_DIR/extensions-disabled"
-rm -rf "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
-cp -R "$REPO_DIR/extensions/cmux-interactive-subagents" "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
+for extension in ask-user-question host-safety-guard web-fetch bash-guard browser prompt-snippets; do
+  (
+    cd "$PI_DIR/extensions/$extension"
+    rm -rf node_modules
+    if [ "$extension" = "host-safety-guard" ]; then
+      npm install
+    else
+      npm install --omit=dev
+    fi
+    if [ "$extension" = "browser" ]; then
+      npx playwright-core install chromium
+    fi
+  )
+done
+
+# Install the local cmux subagent provider as the active host-Pi provider.
+# Its launcher explicitly loads pi-claude-auth in child Pi processes before the
+# child-helper extension so Anthropic/Claude Code OAuth works even with
+# --no-extensions isolation.
+rm -rf "$PI_DIR/extensions/cmux-interactive-subagents"
+cp -R "$REPO_DIR/extensions/cmux-interactive-subagents" "$PI_DIR/extensions/cmux-interactive-subagents"
 (
-  cd "$PI_DIR/extensions-disabled/cmux-interactive-subagents"
+  cd "$PI_DIR/extensions/cmux-interactive-subagents"
   rm -rf node_modules
   npm install --omit=dev
 )
@@ -47,8 +58,7 @@ done
 
 cat <<'EOF'
 
-Installed package sources plus local web-fetch, staged cmux-interactive-subagents, and selected skills.
-Copy settings/settings.example.json to your Pi settings or merge its package filters manually.
-cmux-interactive-subagents is staged under extensions-disabled/; move it to extensions/ only in a Pi process with direct cmux + CMUX_SOCKET_PATH access and after disabling npm:pi-subagents.
+Installed package sources plus local safety/browser/fetch/question/snippet extensions, active cmux-interactive-subagents, selected skills, and ensured ~/Desktop/pi-inbox exists.
+Copy settings/settings.example.json to your Pi settings or merge its package filters manually; npm:pi-subagents should remain installed but extension-disabled to avoid a duplicate subagent tool.
 Run /reload inside Pi to load changed extension code.
 EOF
