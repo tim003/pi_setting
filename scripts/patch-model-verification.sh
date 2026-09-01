@@ -51,19 +51,7 @@ const fs = require("fs");
 const target = process.argv[2];
 const src = fs.readFileSync(target, "utf8");
 
-const anchor = `	const expectedEntry = availableModels.find((entry) => entry.fullId === expectedBase);
-	if (expectedEntry && expectedEntry.id === observedBase) return undefined;
-	return \`model_verification_failed:`;
-
-if (!src.includes(anchor)) {
-  console.error("ERROR: anchor not found — pi-subagents source has changed.");
-  console.error("Inspect formatSubagentModelVerificationError() and re-derive the patch.");
-  process.exit(1);
-}
-
-const replacement = `	const expectedEntry = availableModels.find((entry) => entry.fullId === expectedBase);
-	if (expectedEntry && expectedEntry.id === observedBase) return undefined;
-	// LOCAL PATCH: tolerate date-stamped snapshot ids. Providers answer an alias
+const patch = `	// LOCAL PATCH: tolerate date-stamped snapshot ids. Providers answer an alias
 	// request with the dated snapshot it resolves to, so an alias launch was
 	// marked failed AFTER the child completed successfully. Mirrors the
 	// normalization fuzzyResolveModel() already applies when resolving a model.
@@ -74,9 +62,32 @@ const replacement = `	const expectedEntry = availableModels.find((entry) => entr
 		return stripTrailingDateStamp(normalizeModelSegment(idPart));
 	};
 	if (canonical(expectedBase) === canonical(observedBase)) return undefined;
-	return \`model_verification_failed:`;
+`;
 
-fs.writeFileSync(target, src.replace(anchor, replacement));
+const anchors = [
+  // pi-subagents <= 0.58.x
+  `	const expectedEntry = availableModels.find((entry) => entry.fullId === expectedBase);
+	if (expectedEntry && expectedEntry.id === observedBase) return undefined;
+	return \`model_verification_failed:`,
+  // pi-subagents 0.62.x
+  `	const expectedEntry = availableModels.find((entry) => entry.fullId === expectedBase);
+	if (expectedEntry) {
+		if (expectedEntry.id === observedBase) return undefined;
+		const expectedIdLeaf = expectedEntry.id.slice(expectedEntry.id.lastIndexOf("/") + 1);
+		const expectedFullIdLeaf = expectedEntry.fullId.slice(expectedEntry.fullId.lastIndexOf("/") + 1);
+		if (expectedIdLeaf === observedBase || expectedFullIdLeaf === observedBase) return undefined;
+	}
+	return \`model_verification_failed:`,
+];
+
+const anchor = anchors.find((candidate) => src.includes(candidate));
+if (!anchor) {
+  console.error("ERROR: anchor not found — pi-subagents source has changed.");
+  console.error("Inspect formatSubagentModelVerificationError() and re-derive the patch.");
+  process.exit(1);
+}
+
+fs.writeFileSync(target, src.replace(anchor, anchor.replace("\treturn `model_verification_failed:", patch + "\treturn `model_verification_failed:")));
 console.log("patched:", target);
 NODE
 

@@ -64,6 +64,18 @@ takes effect without a Pi restart. Verified 2026-08-29: with the patch,
 `anthropic/claude-haiku-4-5` and `anthropic/claude-sonnet-4-6` both complete
 cleanly as aliases (`reviewer complete (claude-sonnet-4-6 · thinking high)`).
 
+Re-verified 2026-09-01 after updating `pi-subagents` to `0.62.0`: the package
+still false-failed an alias-model run after the child completed successfully:
+
+```text
+model_verification_failed: child reported a different model than the launch
+candidate. Expected 'anthropic/claude-haiku-4-5'
+             but observed 'claude-haiku-4-5-20251001'.
+```
+
+The patch script was updated for the `0.62.x` source shape, re-applied to the
+live install, and the same alias-model run then reported `State: complete`.
+
 The rejected alternative was pinning every agent to a dated id. That works, but
 forces older snapshots — the newest models frequently expose no dated id at all,
 so it silently caps you to whatever last got a date stamp.
@@ -128,6 +140,15 @@ pi install git:github.com/obra/superpowers
 pi install npm:pi-subagents
 pi install npm:pi-web-access
 ```
+
+Verified versions after the 2026-09-01 package update:
+
+| Package | Version / ref |
+|---|---|
+| `pi-claude-auth` | `0.1.3` |
+| `pi-subagents` | `0.62.0` |
+| `pi-web-access` | `0.27.0` |
+| `github.com/obra/superpowers` | `b36e082` |
 
 Or run:
 
@@ -356,7 +377,47 @@ Update installed Pi packages with:
 pi update --extensions
 ```
 
-These live in the `pi-agent-home` volume, so package updates persist normally.
+You can run this from inside an active Pi session. The files on disk update
+immediately; the current session may keep already-loaded extension code until
+you run `/reload` or restart Pi.
+
+These packages live in the `pi-agent-home` volume, so package updates persist
+normally across container restarts and image rebuilds.
+
+### 2026-09-01 update check
+
+A live in-session update was verified:
+
+- `pi-subagents`: `0.58.0` → `0.62.0`
+- `pi-web-access`: `0.26.0` → `0.27.0`
+- `pi-claude-auth`: already current at `0.1.3`
+- `github.com/obra/superpowers`: reconciled at `b36e082`
+
+Credential and runtime checks after `pi update --extensions` and `/reload`:
+
+- `/root/.pi/agent/codex/auth.json` stayed byte-for-byte identical to the
+  pre-update backup.
+- `/root/.codex/auth.json` still symlinked to
+  `/root/.pi/agent/codex/auth.json`.
+- `ssh -T git@github.com` still authenticated as `tim003`.
+- `subagent({ action: "list" })` still exposed the expected builtin agents.
+- `codex-exec` smoke tests passed before update, after update, and after
+  `/reload`:
+  - `before update codex ok`
+  - `after update codex ok`
+  - `all extension update codex ok`
+  - `fresh reload codex ok`
+
+A backup of the Codex CLI auth file was kept at:
+
+```text
+/root/.pi/agent/update-tracking/codex-auth-backup-20260901T034834Z.json
+```
+
+Do not commit that backup; it contains credentials. It is only a local recovery
+copy on the persistent volume.
+
+### Updating Pi itself
 
 **Updating Pi itself is different in a container.** `pi update --self` writes to
 an image layer and is discarded on the next `--rm` exit — it appears to work,
