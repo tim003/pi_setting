@@ -22,10 +22,18 @@ This repo has its own Git remote and should be committed/pushed from here. The p
   - `settings/web-search.example.json`
 - Reinstall script for Pi packages:
   - `scripts/install-packages.sh`
-- Extensions that restore ephemeral container state on startup:
+- Extensions:
   - `extensions/github-ssh-persist.ts` — SSH config, git identity, codex CLI auth link
+  - `extensions/web-fetch/` — Amos-inspired `web_fetch` URL-to-clean-Markdown tool, vendored locally with dependencies
 - Script to re-apply the pi-subagents model-verification patch:
   - `scripts/patch-model-verification.sh`
+- Selected skills vendored from `amosblomqvist/pi-config`:
+  - `skills/analyze-sessions/`
+  - `skills/pdf-reader/`
+  - `skills/web-debug/`
+  - `skills/youtube-transcript/`
+- Upgrade notes:
+  - `UPGRADE_INTERACTIVE_MEMORY.md`
 - Notes on what should and should not be committed.
 
 ## What's intentionally excluded
@@ -157,9 +165,11 @@ Verified versions after the 2026-09-01 package update:
 | Package | Version / ref |
 |---|---|
 | `pi-claude-auth` | `0.1.3` |
-| `pi-subagents` | `0.62.0` |
+| `pi-subagents` | `0.62.0` — still active; verified working provider for current async subagents |
 | `pi-web-access` | `0.27.0` |
 | `github.com/obra/superpowers` | `b36e082` |
+| `github.com/HazAT/pi-interactive-subagents` | installed but extension disabled until Docker↔cmux control is solved |
+| `github.com/amosblomqvist/pi-observational-memory` | installed; gated off per session until `/om on` |
 
 Or run:
 
@@ -379,6 +389,80 @@ access enabled: one key per repo, blast radius of exactly one repo.
 
 Revoke at any time via GitHub → Settings → SSH and GPG keys → delete
 `pi-container`. Revocation is immediate and affects nothing else.
+
+## Interactive subagents and observational memory
+
+The cmux-capable upstream is installed for evaluation:
+
+```bash
+pi install git:github.com/HazAT/pi-interactive-subagents
+```
+
+However, it is **disabled in the current live settings**:
+
+```json
+{ "source": "git:github.com/HazAT/pi-interactive-subagents", "extensions": [] }
+```
+
+Reason: its cmux backend expects both `CMUX_SOCKET_PATH` and a runnable `cmux` command inside
+the Pi process. In this setup, Pi runs inside a Linux Docker container while cmux is a macOS
+host app, so the extension cannot create cmux panes as-is. Keep the verified
+`npm:pi-subagents` extension active until a Docker↔cmux bridge exists.
+
+Do not enable both `npm:pi-subagents` and `HazAT/pi-interactive-subagents` extensions at the
+same time: both register a `subagent` tool. After changing package/resource settings, run
+`/reload` or restart Pi.
+
+Observational memory is installed from:
+
+```bash
+pi install git:github.com/amosblomqvist/pi-observational-memory
+```
+
+It is gated off per session. Use:
+
+```text
+/om:status
+/om on
+/om off
+```
+
+It writes `.memory/<sessionId>/` under the current project; `.memory/` is ignored in both the
+vault root and this repo.
+
+## Disable, remove, and rollback
+
+Disable resources without uninstalling:
+
+```bash
+pi config      # global config UI
+pi config -l   # project-local config UI
+```
+
+Remove a package from settings and disk:
+
+```bash
+pi remove git:github.com/HazAT/pi-interactive-subagents
+pi remove git:github.com/amosblomqvist/pi-observational-memory
+pi remove npm:pi-subagents
+```
+
+Remove a copied local extension/skill by deleting or renaming it under
+`/root/.pi/agent/extensions/` or `/root/.pi/agent/skills/`, then run `/reload`.
+
+A settings backup was captured before the 2026-09-01 interactive/memory migration:
+
+```text
+/root/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json
+```
+
+Restore it with:
+
+```bash
+cp /root/.pi/agent/update-tracking/settings-before-interactive-memory-20260901T071922Z.json /root/.pi/agent/settings.json
+```
+
+Then remove/rename copied local resources and run `/reload`.
 
 ## Updating
 
