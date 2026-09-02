@@ -65,6 +65,38 @@ GitHub SSH:
 ssh -T git@github.com
 ```
 
+### GitHub SSH keys live in 1Password
+
+The key is held by **1Password's SSH agent**, not the launchd default agent and not a file on disk. Diagnose in this order before changing anything.
+
+**Never run `ssh-add` on this machine.** It would extract the private key out of 1Password onto disk and into a second agent, defeating the reason it is in 1Password. There is no situation in this setup where `ssh-add` is the fix.
+
+Symptom — `git push` fails with:
+
+```
+Permissions 0644 for '~/.ssh/<key>.pub' are too open
+Load key "~/.ssh/<key>.pub": bad permissions
+git@github.com: Permission denied (publickey)
+```
+
+This is misleading in two ways. `0644` is *correct* for a public key, and the permissions are not the problem. 1Password's config lists the **public** key as `IdentityFile` alongside an `IdentityAgent` socket; when the agent does not answer, ssh falls back to parsing that `.pub` as a private key and reports the confusing error above. **It means the agent is unreachable.**
+
+Ask the agent directly:
+
+```bash
+SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" ssh-add -l
+```
+
+| Result | Meaning | Fix |
+| --- | --- | --- |
+| Lists keys incl. `GitHub (ED25519)` | Agent healthy and unlocked | Look elsewhere — remote URL, network, repo permissions |
+| `Error connecting to agent: Connection refused` | 1Password has **quit**; socket file remains with no listener | `pgrep -fl 1Password`, then `open -a "1Password"` |
+| Connects but no identities, or prompts | Vault **locked**, or SSH agent disabled in settings | Unlock 1Password; check Settings → Developer → Use the SSH agent |
+
+Do not read `SSH_AUTH_SOCK` as authoritative. It usually points at `/private/tmp/com.apple.launchd.*/Listeners` even when ssh is correctly routed to 1Password via `IdentityAgent` in `~/.ssh/config`. Read the config rather than inferring the agent from the environment.
+
+If pushes worked earlier in the same session and then stopped, the overwhelmingly likely cause is 1Password quitting — not a key, config, or permissions change. Establish what changed before proposing anything that adds a credential.
+
 Codex CLI, if used:
 
 ```bash
