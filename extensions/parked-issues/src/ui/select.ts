@@ -8,9 +8,16 @@
  * instead of clobbering the screen.
  */
 
-import { SelectList, type SelectItem } from "@earendil-works/pi-tui";
+import { SelectList, type SelectItem, wrapTextWithAnsi } from "@earendil-works/pi-tui";
+import { frame } from "./frame.ts";
 
 const SHARED_UI_LOCK_KEY = "__piSharedUiLock";
+
+/** Border padding, mirrored in the width maths below. */
+const PADDING_X = 2;
+const PADDING_Y = 1;
+
+const HINT = "↑↓ navigate  •  Enter select  •  Esc cancel";
 
 type UiLock = { withLock<T>(fn: () => T | Promise<T>): Promise<T> };
 
@@ -42,12 +49,27 @@ function selectListTheme(theme: any) {
 	};
 }
 
+export interface PopupOptions {
+	/** Short label drawn into the top border. */
+	title: string;
+	/** Longer text shown inside the box, above the choices. */
+	body?: string;
+	/** `high` paints the frame in the error colour; anything else uses the warning colour. */
+	tone?: "high" | "normal";
+}
+
 /**
- * Show a headed list of choices as an overlay. Resolves to the chosen value, or
- * `null` when the user cancels or no UI is attached (headless child, relay drop).
+ * Show a titled, bordered list of choices as an overlay. Resolves to the chosen
+ * value, or `null` when the user cancels or no UI is attached (headless child,
+ * relay drop).
  */
-export async function choose(ctx: any, header: string, items: SelectItem[]): Promise<string | null> {
+export async function choose(
+	ctx: any,
+	options: PopupOptions,
+	items: SelectItem[],
+): Promise<string | null> {
 	if (!ctx?.hasUI) return null;
+	const { title, body, tone = "normal" } = options;
 
 	return getSharedUiLock().withLock(() =>
 		ctx.ui.custom<string | null>(
@@ -55,9 +77,30 @@ export async function choose(ctx: any, header: string, items: SelectItem[]): Pro
 				const list = new SelectList(items, 8, selectListTheme(theme));
 				list.onSelect = (item: SelectItem) => done(item.value);
 				list.onCancel = () => done(null);
+
+				const borderColor = tone === "high" ? "error" : "warning";
 				return {
 					render(width: number): string[] {
-						return [theme.fg("toolTitle", theme.bold(header)), "", ...list.render(width)];
+						// Two border columns plus the gutters the frame will add.
+						const contentWidth = Math.max(1, width - 2 - PADDING_X * 2);
+
+						const content: string[] = [];
+						if (body) {
+							for (const line of wrapTextWithAnsi(body, contentWidth)) {
+								content.push(theme.fg("text", line));
+							}
+							content.push("");
+						}
+						content.push(...list.render(contentWidth));
+						content.push("");
+						content.push(theme.fg("dim", HINT));
+
+						return frame(content, width, {
+							title: theme.fg(borderColor, theme.bold(title)),
+							paddingX: PADDING_X,
+							paddingY: PADDING_Y,
+							border: (text: string) => theme.fg(borderColor, text),
+						});
 					},
 					handleInput(data: string): void {
 						list.handleInput(data);

@@ -69,13 +69,20 @@ export default function parkedIssues(pi: ExtensionAPI) {
 
 	/** Ask the user what to do with a freshly noticed item. */
 	async function triage(ctx: any, issue: ParkedIssue): Promise<void> {
-		const header = `Park this ${issue.severity} issue?  ${issue.title}`;
-		const action = await choose(ctx, header, [
-			{ value: "park", label: "Park it", description: "Add to the backlog for later" },
-			{ value: "front", label: "Park at the front", description: "Do this next" },
-			{ value: "discard", label: "Discard", description: "Not worth tracking" },
-			{ value: "other", label: "Other…", description: "Reword it or add a note" },
-		]);
+		const action = await choose(
+			ctx,
+			{
+				title: `Park this ${issue.severity} issue?`,
+				body: issue.detail ? `${issue.title}\n${issue.detail}` : issue.title,
+				tone: issue.severity === "high" ? "high" : "normal",
+			},
+			[
+				{ value: "park", label: "Park it", description: "Add to the backlog for later" },
+				{ value: "front", label: "Park at the front", description: "Do this next" },
+				{ value: "discard", label: "Discard", description: "Not worth tracking" },
+				{ value: "other", label: "Other…", description: "Reword it or add a note" },
+			],
+		);
 
 		// Cancelled or headless: keep the item rather than silently losing it.
 		if (action === null) {
@@ -165,7 +172,7 @@ export default function parkedIssues(pi: ExtensionAPI) {
 			if (open.length > 0) {
 				const picked = await choose(
 					ctx,
-					"Parked issues — pick one to act on",
+					{ title: `Parked issues (${open.length}) — pick one to act on` },
 					open.map((issue) => ({
 						value: issue.id,
 						label: `${issue.severity}  ${issue.title}`,
@@ -174,7 +181,7 @@ export default function parkedIssues(pi: ExtensionAPI) {
 				);
 
 				if (picked) {
-					const action = await choose(ctx, "What should happen to it?", [
+					const action = await choose(ctx, { title: "What should happen to it?" }, [
 						{ value: "resolve", label: "Mark resolved" },
 						{ value: "front", label: "Move to the front" },
 						{ value: "discard", label: "Discard" },
