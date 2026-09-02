@@ -196,7 +196,9 @@ export default function parkedIssues(pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerEntryRenderer(CHECKLIST_ENTRY, (entry: any, theme: any) => {
+	// Pi calls entry renderers as (entry, { expanded }, theme) — the options object
+	// sits between the entry and the theme.
+	pi.registerEntryRenderer(CHECKLIST_ENTRY, (entry: any, _options: any, theme: any) => {
 		const markdown = String(entry?.data?.markdown ?? "");
 		return new Text(theme.fg("muted", markdown), 0, 0);
 	});
