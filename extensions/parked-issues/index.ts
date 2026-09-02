@@ -18,6 +18,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
+import { findIssue } from "./src/match.ts";
 import { PARKED_RECORDED, PARKED_UPDATED, foldIssues, openIssues, type ParkedIssue } from "./src/model.ts";
 import { escalate, type Severity } from "./src/severity.ts";
 import { renderChecklist, writeIssuesFile } from "./src/store.ts";
@@ -35,6 +36,17 @@ const ParkIssueParams = Type.Object({
 	severity: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], {
 		description:
 			"high = safety, data loss, security, or destructive operations (interrupts the user immediately). medium = a real follow-up worth doing. low = a minor or speculative idea.",
+	}),
+});
+
+const CloseIssueParams = Type.Object({
+	issue: Type.String({
+		description:
+			"Which issue to close: its id, or a distinctive phrase from its title. Must identify exactly one open issue.",
+	}),
+	action: Type.Union([Type.Literal("resolve"), Type.Literal("discard")], {
+		description:
+			"resolve = the work is done. discard = drop it without doing it (the user is asked to confirm).",
 	}),
 });
 
@@ -146,6 +158,75 @@ export default function parkedIssues(pi: ExtensionAPI) {
 		renderCall(args: any, theme: any) {
 			return new Text(
 				theme.fg("toolTitle", theme.bold("park_issue ")) + theme.fg("muted", String(args.title ?? "")),
+				0,
+				0,
+			);
+		},
+	});
+
+	pi.registerTool({
+		name: "close_parked_issue",
+		label: "close_parked_issue",
+		description:
+			"Close a parked issue once it is finished or no longer wanted. Use this instead of editing .parked/ISSUES.md, which is generated from the session and will overwrite any manual edit.",
+		promptGuidelines: [
+			"Close a parked issue as soon as the user says it is done, resolved, or should be abandoned.",
+			"Use resolve when the work was actually completed; use discard to drop an issue unaddressed.",
+			"Never close an issue the user still expects work on.",
+			"Identify the issue by a distinctive phrase from its title rather than guessing an id.",
+		],
+		parameters: CloseIssueParams,
+
+		async execute(_toolCallId, params: any, _signal, _onUpdate, ctx: any) {
+			const say = (text: string) => ({ content: [{ type: "text" as const, text }] });
+			const match = findIssue(currentIssues(ctx), params.issue);
+
+			if (match.kind === "not-found") {
+				const open = openIssues(currentIssues(ctx));
+				const listing =
+					open.length > 0
+						? ` Open issues: ${open.map((issue) => `${issue.id} — ${issue.title}`).join("; ")}`
+						: " The backlog is empty for this session.";
+				return say(`No parked issue matches "${params.issue}".${listing}`);
+			}
+
+			if (match.kind === "ambiguous") {
+				const candidates = match.matches.map((issue) => `${issue.id} — ${issue.title}`).join("; ");
+				return say(
+					`"${params.issue}" matches ${match.matches.length} open issues, so nothing was closed. Name one exactly: ${candidates}`,
+				);
+			}
+
+			if (match.kind === "already-closed") {
+				return say(`Already ${match.issue.status}: ${match.issue.title}`);
+			}
+
+			const issue = match.issue;
+
+			// Resolving records completed work, so it goes through silently. Discarding
+			// drops an issue nobody actioned, which is the destructive one — ask first.
+			if (params.action === "discard") {
+				const answer = await choose(
+					ctx,
+					{ title: "Discard this parked issue?", body: issue.title },
+					[
+						{ value: "discard", label: "Discard it", description: "Drop it from the backlog" },
+						{ value: "keep", label: "Keep it", description: "Leave it open for later" },
+					],
+				);
+				if (answer !== "discard") return say(`Kept (discard declined): ${issue.title}`);
+			}
+
+			const status = params.action === "discard" ? "discarded" : "resolved";
+			pi.appendEntry(PARKED_UPDATED, { id: issue.id, status });
+			syncBacklog(ctx);
+			return say(`Marked ${status}: ${issue.title}`);
+		},
+
+		renderCall(args: any, theme: any) {
+			return new Text(
+				theme.fg("toolTitle", theme.bold("close_parked_issue ")) +
+					theme.fg("muted", `${args.action ?? ""} ${args.issue ?? ""}`.trim()),
 				0,
 				0,
 			);

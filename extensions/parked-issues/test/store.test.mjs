@@ -79,3 +79,21 @@ test("creates the .parked directory when it does not yet exist", () => {
 		assert.equal(existsSync(join(dir, PARKED_DIR)), true);
 	});
 });
+
+/**
+ * The file is regenerated from the session ledger on every sync. An agent that
+ * "closes" an issue by editing this file has its edit silently reverted, which is
+ * exactly how the robotics backlog kept resurrecting resolved items.
+ */
+test("the written file warns that it is generated and names the tool to use", () => {
+	withTempDir((dir) => {
+		writeIssuesFile(dir, [issue()]);
+		const written = readFileSync(issuesFilePath(dir), "utf8");
+		assert.match(written, /generated/i, "must say it is generated");
+		assert.match(written, /close_parked_issue/, "must name the tool that actually closes issues");
+	});
+});
+
+test("the in-session checklist stays free of that file-only banner", () => {
+	assert.doesNotMatch(renderChecklist([issue()]), /close_parked_issue/);
+});

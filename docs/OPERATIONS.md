@@ -272,7 +272,18 @@ When the agent notices something worth raising that is not what you asked about,
 
 Severity is proposed by the model but passes through a hard-coded escalation list in `src/severity.ts`; phrases such as `credential`, `auth.json`, `--force`, and `rm -rf` force `high` regardless of the model's judgment.
 
-Run `/parked` to review, reorder, resolve, or discard items, and to print the checklist. Open items live in the session ledger, so the list rewinds correctly under `/tree`. The durable backlog is written to `.parked/ISSUES.md` in the project root (gitignored), which survives across sessions.
+Run `/parked` to review, reorder, resolve, or discard items, and to print the checklist. Open items live in the session ledger, so the list rewinds correctly under `/tree`.
+
+### Closing an issue
+
+Tell the agent an issue is done or should be dropped and it calls `close_parked_issue`:
+
+- **resolve** closes it straight away — you already said the work was finished.
+- **discard** asks for confirmation first, since dropping an unactioned issue is the destructive direction. Declining, or having no UI attached, leaves the issue open.
+
+The durable backlog at `.parked/ISSUES.md` in the project root (gitignored) is **generated** from the session ledger on every sync. Editing it by hand does nothing: the next sync overwrites it. Closing an issue has to go through `close_parked_issue` or `/parked`.
+
+Because the ledger is per-session, an issue parked in one session can only be closed from that session. `close_parked_issue` reports the open issues it can actually see rather than failing silently.
 
 The `prompt-snippets` extension provides temporary prompt toggles for recurring behaviors such as asking questions, delegating exploration, verifying assumptions, and orchestrator mode. Use its registered Pi commands after `/reload`.
 

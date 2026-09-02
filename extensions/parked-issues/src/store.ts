@@ -51,6 +51,15 @@ export function renderChecklist(issues: readonly ParkedIssue[]): string {
 }
 
 /**
+ * Stated in the file itself because the failure it prevents is invisible: this file
+ * is rewritten from the session ledger on every sync, so an agent that closes an
+ * issue by editing here has its work silently reverted on the next write.
+ */
+const GENERATED_BANNER =
+	"<!-- Generated from the Pi session ledger on every sync. Edits here are overwritten.\n" +
+	"     To close an issue, use the close_parked_issue tool or the /parked command. -->";
+
+/**
  * Write the backlog atomically (temp file + rename) so a crash mid-write can never
  * leave a truncated backlog behind.
  */
@@ -59,6 +68,6 @@ export function writeIssuesFile(projectRoot: string, issues: readonly ParkedIssu
 	mkdirSync(dir, { recursive: true });
 	const target = join(dir, ISSUES_FILE);
 	const temp = join(dir, `.${ISSUES_FILE}.${process.pid}.tmp`);
-	writeFileSync(temp, renderChecklist(issues), "utf8");
+	writeFileSync(temp, `${GENERATED_BANNER}\n\n${renderChecklist(issues)}`, "utf8");
 	renameSync(temp, target);
 }
