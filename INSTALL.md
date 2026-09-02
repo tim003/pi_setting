@@ -1,0 +1,530 @@
+# Install Tim's Pi setup on macOS
+
+This guide is for a colleague setting up a similar **host macOS Pi + cmux** environment from this repository. It installs Pi, cmux-aware interactive subagents, local extensions, selected skills, Tailscale/VPS checks, and optional cmux remote access from iOS.
+
+It does **not** copy secrets. You must authenticate with your own Claude, GitHub, OpenAI/Codex, Tailscale, and VPS credentials.
+
+## What you will end up with
+
+- Pi running directly on macOS, not in the old Docker container runtime.
+- Pi packages:
+  - `npm:pi-claude-auth`
+  - `git:github.com/obra/superpowers`
+  - `npm:pi-subagents` with its extension resources disabled
+  - `npm:pi-web-access`
+  - `git:github.com/amosblomqvist/pi-observational-memory`
+- Local extensions copied into `~/.pi/agent/extensions/`:
+  - `ask-user-question`
+  - `bash-guard`
+  - `browser`
+  - `cmux-interactive-subagents` — the active modified cmux interactive subagent provider
+  - `host-safety-guard`
+  - `prompt-snippets`
+  - `web-fetch`
+- Local skills copied into `~/.pi/agent/skills/`:
+  - `analyze-sessions`
+  - `pdf-reader`
+  - `web-debug`
+  - `youtube-transcript`
+- Optional cmux remote access from iPhone/iPad over Tailscale.
+
+## Security and scope notes
+
+Pi packages and extensions run with your user permissions and can execute arbitrary code. Review this repo before installing, especially the `extensions/` directory and the third-party package sources.
+
+Never commit or share these from `~/.pi/agent`:
+
+- `auth.json`
+- `models-store.json`
+- `sessions/`
+- `npm/`, `git/`, `bin/`
+- `ssh/`
+- `.env`, tokens, API keys, OAuth credentials, logs, caches, and databases
+
+If you are connecting to the shared VPS, remember it hosts multiple services. Do not restart Caddy, n8n, or unrelated Docker stacks unless you explicitly intend to affect other projects.
+
+## 1. Install macOS prerequisites
+
+Install Command Line Tools if you do not already have them:
+
+```bash
+xcode-select --install
+```
+
+Install Homebrew if needed: <https://brew.sh/>
+
+Then install common tools:
+
+```bash
+brew install node git ripgrep coreutils ffmpeg yt-dlp tailscale
+```
+
+Install the standalone Tailscale macOS app from Tailscale if you need the GUI and CLI together:
+
+<https://tailscale.com/download/macos>
+
+The App Store Tailscale build can be sandboxed and may not expose the CLI in the way cmux remote tooling expects.
+
+## 2. Install cmux
+
+Install cmux from its official source:
+
+<https://cmux.com/>
+
+Open cmux once and create a normal terminal pane. Later, start Pi from inside cmux when you want interactive subagents; the local subagent provider needs direct cmux access via `CMUX_SOCKET_PATH`.
+
+Quick check from a cmux terminal:
+
+```bash
+echo "$CMUX_SOCKET_PATH"
+command -v cmux
+```
+
+`CMUX_SOCKET_PATH` should be non-empty inside a cmux-managed terminal.
+
+## 3. Install Pi
+
+Install Pi globally with npm:
+
+```bash
+npm install -g @earendil-works/pi-coding-agent
+pi --version
+```
+
+If you use `nvm`, install Pi under the Node version you actually use in your shell, and make sure `pi` is on `PATH` inside cmux.
+
+## 4. Clone this settings repo
+
+Clone the GitHub repo that contains this `pi_setting` directory:
+
+```bash
+git clone git@github.com:tim003/pi_setting.git ~/pi_setting
+cd ~/pi_setting
+
+# If you prefer HTTPS:
+# git clone https://github.com/tim003/pi_setting.git ~/pi_setting
+```
+
+## 5. Install package sources, local extensions, and local skills
+
+Run the bundled installer:
+
+```bash
+./scripts/install-packages.sh
+```
+
+This installs third-party Pi packages, copies local extensions and skills into `~/.pi/agent`, installs extension dependencies, and creates `~/Desktop/pi-inbox` for safe image/screenshot reads.
+
+Then copy the example settings, or merge them if you already have Pi settings:
+
+```bash
+PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+mkdir -p "$PI_DIR"
+cp settings/settings.example.json "$PI_DIR/settings.json"
+cp settings/web-search.example.json "$PI_DIR/web-search.json"
+```
+
+Important: `npm:pi-subagents` should remain installed, but its extension resources should be disabled in settings:
+
+```json
+{
+  "source": "npm:pi-subagents",
+  "extensions": []
+}
+```
+
+That avoids duplicate `subagent` tool providers while the local `cmux-interactive-subagents` extension is active.
+
+## 6. Apply the pi-subagents alias verification patch
+
+Run this after installing packages and after any future `pi update --extensions`:
+
+```bash
+./scripts/patch-model-verification.sh
+```
+
+Why: some providers return dated model snapshot ids even when Pi launches an alias such as `anthropic/claude-sonnet-4-6`. Without the patch, `pi-subagents` can mark a completed child run as failed only because the returned snapshot id differs from the alias.
+
+## 7. Authenticate locally
+
+### Claude / Anthropic through Claude Code
+
+Install Claude Code if needed and authenticate with your own account:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude auth login --claudeai
+claude --version
+```
+
+`pi-claude-auth` reads your Claude Code OAuth credentials so Pi can use Anthropic models without a separate Anthropic API key.
+
+Smoke test:
+
+```bash
+pi auth check --provider anthropic --model claude-haiku-4-5 --json
+```
+
+If that fails, run `claude` once interactively and confirm Claude Code itself is authenticated before debugging Pi.
+
+### GitHub SSH
+
+Use your own GitHub SSH key. Do not copy Tim's key or any `~/.pi/agent/ssh` contents.
+
+```bash
+ssh -T git@github.com
+```
+
+Expected shape:
+
+```text
+Hi <your-github-user>! You've successfully authenticated, but GitHub does not provide shell access.
+```
+
+### Optional Codex CLI
+
+Pi's `openai-codex` provider login and the `codex` CLI login are separate. If you want CLI-backed Codex subagents, see [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md#auth-checks).
+
+## 8. Start Pi and reload resources
+
+Start Pi from a cmux terminal:
+
+```bash
+cd ~/pi_setting
+pi
+```
+
+Inside Pi, run:
+
+```text
+/reload
+```
+
+Basic checks from a shell:
+
+```bash
+pi list
+pi --list-models | grep -E 'claude|openai-codex' | head
+```
+
+Inside Pi, ask for a simple command or use the tools normally. You should see local skills loaded in the prompt context when relevant.
+
+### Guard prompt defaults
+
+This setup is meant to be usable without excessive confirmations:
+
+- `host-safety-guard` defaults to `high-only`. Keep it that way unless you want stricter Desktop/path prompts. To force strict mode, start Pi with `PI_HOST_GUARD_LEVEL=strict`; to return to the default, unset that variable or run `/host-guard high-only` inside Pi.
+- `bash-guard` prompts on many potentially risky main-session commands, including routine git commands. If that is too intrusive for your workflow, run `/bash-guard` inside Pi to disable interactive prompting for the current session. Catastrophic commands still remain hard-blocked.
+
+## 9. Activate and verify modified cmux interactive subagents
+
+The base installer already copies `extensions/cmux-interactive-subagents/`. To actively enforce the correct settings and dependency install, run this from the repo while Pi/cmux is available:
+
+```bash
+./scripts/activate-cmux-interactive-subagents.sh
+```
+
+Requirements:
+
+- `cmux` is on `PATH`.
+- `CMUX_SOCKET_PATH` is set.
+- Pi was started from inside cmux, or at least your shell has cmux socket access.
+
+Restart Pi or run `/reload`, then verify with the Pi tools:
+
+```text
+subagents_list
+```
+
+Launch smoke test:
+
+```text
+Use the subagent tool to start a delegate named cmux-smoke-test with this task: Say exactly: cmux custom subagent ok
+```
+
+Resume smoke test:
+
+```text
+Send cmux-smoke-test this message: Say exactly: cmux resume ok
+```
+
+Expected: a cmux child pane appears, completes, and can be resumed by name.
+
+If this fails:
+
+1. Confirm `echo "$CMUX_SOCKET_PATH"` is non-empty in the shell that launched Pi.
+2. Confirm `npm:pi-subagents` has `"extensions": []` in `~/.pi/agent/settings.json`.
+3. Run `/reload` or restart Pi.
+4. See [`docs/OPERATIONS.md`](docs/OPERATIONS.md#cmux-interactive-subagents) and [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md#cmux-subagent-troubleshooting).
+
+## 10. Observational memory
+
+Observational memory is installed but gated off by default.
+
+Inside Pi:
+
+```text
+/om:status
+/om on
+/om off
+```
+
+It writes `.memory/<sessionId>/` under the current project. Add `.memory/` to project `.gitignore` before using it in a repository that does not already ignore it.
+
+Current config in `settings/settings.example.json` uses:
+
+- observer: `anthropic/claude-haiku-4-5`, low thinking
+- consolidator: `anthropic/claude-sonnet-4-6`, medium thinking
+- passive mode: off
+
+## 11. Tailscale and shared VPS access
+
+If you already have VPS access through Tailscale, verify it before wiring it into any Pi workflow.
+
+On the Mac:
+
+```bash
+tailscale status
+tailscale ip -4
+```
+
+Find the VPS tailnet IP in `tailscale status`. In Tim's notes, the VPS was `srv962189` at `100.84.83.90`, but you should verify the current value in your own tailnet.
+
+Test SSH with your own VPS username/key:
+
+```bash
+ssh <user>@<vps-tailnet-ip> 'hostname; whoami'
+```
+
+If this fails, fix Tailscale/VPS SSH outside Pi first. Do not assume this settings repo grants VPS access; it does not include private keys.
+
+Operational caution for the shared VPS:
+
+- Several projects share one Caddy instance.
+- A deploy/restart for one project must not disturb others.
+- Check server-side logs/config before repeated client-side testing.
+- Do not run broad commands such as `docker compose down` from a shared directory.
+
+## 12. Optional: cmux remote access from iOS over Tailscale
+
+This section mirrors Tim's setup using the third-party **Cmux Remote** app and relay. Treat it as optional and security-sensitive.
+
+### Security tradeoff
+
+Cmux Remote mirrors real cmux panes and sends keyboard input. That means it is effectively remote terminal control.
+
+The relay also requires:
+
+```bash
+CMUX_SOCKET_MODE=allowAll
+```
+
+That lets processes outside cmux connect to cmux's socket. On a single-user Mac this may be acceptable; on a shared or high-risk machine, think carefully before enabling it.
+
+### 12.1 Confirm Tailscale on Mac and iPhone
+
+- Install Tailscale on macOS and sign in.
+- Install Tailscale on iOS and sign in to the same tailnet or an account with access.
+- iOS can run only one VPN at a time; turn off other VPNs while using Tailscale.
+
+Get the Mac tailnet IP:
+
+```bash
+tailscale ip -4
+```
+
+Use this IP in the relay config below.
+
+### 12.2 Build and install the relay
+
+cmux must be running.
+
+```bash
+git clone https://github.com/NewTurn2017/cmux-remote.git ~/cmux-remote
+cd ~/cmux-remote
+./scripts/install-launchd.sh
+```
+
+This installs the relay under `~/.cmuxremote/` and creates a LaunchAgent named `com.genie.cmuxremote`.
+
+### 12.3 Bind the relay to the tailnet IP only
+
+Do not leave the relay on `0.0.0.0` unless you intentionally want LAN exposure.
+
+Replace `<mac-tailnet-ip>` with your Mac's Tailscale IP:
+
+```bash
+cp ~/.cmuxremote/relay.json ~/.cmuxremote/relay.json.bak
+
+cat > ~/.cmuxremote/relay.json <<'EOF'
+{
+  "listen": "<mac-tailnet-ip>:4399",
+  "default_fps": 15,
+  "idle_fps": 5
+}
+EOF
+
+launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
+lsof -nP -iTCP:4399 -sTCP:LISTEN
+```
+
+Expected: the listener is bound to `<mac-tailnet-ip>:4399`, not `*:4399`.
+
+### 12.4 Open cmux's socket to the relay
+
+One-time/manual for the current login session:
+
+```bash
+launchctl setenv CMUX_SOCKET_MODE allowAll
+```
+
+Then quit and relaunch cmux, and restart the relay:
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/com.genie.cmuxremote"
+```
+
+If you want this to persist across Mac restarts, create a small LaunchAgent. This is convenient but keeps the cmux socket open to local processes across logins.
+
+```bash
+mkdir -p ~/bin ~/Library/LaunchAgents
+
+cat > ~/bin/cmux-socket-mode <<'EOF'
+#!/bin/sh
+launchctl setenv CMUX_SOCKET_MODE allowAll
+EOF
+chmod +x ~/bin/cmux-socket-mode
+
+cat > ~/Library/LaunchAgents/com.tim.cmuxsocketmode.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tim.cmuxsocketmode</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$HOME/bin/cmux-socket-mode</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>
+EOF
+
+launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.tim.cmuxsocketmode.plist
+launchctl kickstart "gui/$(id -u)/com.tim.cmuxsocketmode"
+launchctl getenv CMUX_SOCKET_MODE
+```
+
+Expected:
+
+```text
+allowAll
+```
+
+If cmux starts before this LaunchAgent after a reboot, quit and relaunch cmux once.
+
+### 12.5 Pair iOS
+
+1. Turn on Tailscale on iPhone/iPad.
+2. Open the Cmux Remote iOS app.
+3. Add a Mac using the Mac tailnet IP and port `4399`.
+4. Approve pairing from the relay's macOS menu bar icon.
+
+Pairing is per device. Revoke a lost device from the relay menu bar.
+
+### 12.6 Verify and operate the relay
+
+```bash
+lsof -nP -iTCP:4399 -sTCP:LISTEN
+tail -n 50 ~/.cmuxremote/log/stderr.log
+cd ~/cmux-remote && ./scripts/cmux-probe.sh
+```
+
+Useful operations:
+
+```bash
+SERVICE="gui/$(id -u)/com.genie.cmuxremote"
+launchctl kickstart -k "$SERVICE"
+launchctl print "$SERVICE" | grep -E 'state|pid|last exit'
+launchctl bootout "$SERVICE"
+tail -f ~/.cmuxremote/log/stderr.log
+```
+
+Common symptoms:
+
+- `socketMissing(...)`: cmux is not running. Launch cmux and restart the relay.
+- `attached` / `detached` loop: socket mode is wrong or cmux started before `CMUX_SOCKET_MODE=allowAll` was set. Check `launchctl getenv CMUX_SOCKET_MODE`, relaunch cmux, then restart the relay.
+- Relay listens on `*:4399`: fix `~/.cmuxremote/relay.json` to bind to the tailnet IP.
+
+## 13. Update and rollback
+
+Update Pi packages:
+
+```bash
+pi update --extensions
+./scripts/patch-model-verification.sh
+```
+
+Then run `/reload` or restart Pi.
+
+Update Pi itself:
+
+```bash
+pi update --self
+pi --version
+```
+
+Rollback local extensions/skills by removing or renaming their folders under `~/.pi/agent/extensions/` or `~/.pi/agent/skills/`, then run `/reload`.
+
+For cmux subagents specifically:
+
+```bash
+./scripts/rollback-cmux-interactive-subagents.sh <settings-backup-json>
+```
+
+Activation scripts write settings backups under:
+
+```text
+~/.pi/agent/update-tracking/
+```
+
+## 14. Final checklist
+
+Run these before calling the setup complete:
+
+```bash
+pi --version
+pi list
+pi --list-models | grep claude | head
+ssh -T git@github.com
+claude --version
+pi auth check --provider anthropic --model claude-haiku-4-5 --json
+```
+
+From a cmux terminal:
+
+```bash
+echo "$CMUX_SOCKET_PATH"
+./scripts/patch-model-verification.sh
+```
+
+Inside Pi:
+
+```text
+/reload
+/om:status
+```
+
+Then verify one cmux subagent launch and resume as described in section 9.
+
+For iOS remote access, also verify:
+
+```bash
+lsof -nP -iTCP:4399 -sTCP:LISTEN
+launchctl getenv CMUX_SOCKET_MODE
+tail -n 50 ~/.cmuxremote/log/stderr.log
+```
+
+The relay should listen on the Mac tailnet IP only, cmux socket mode should be `allowAll`, and the log should not show a repeated attach/detach loop.
