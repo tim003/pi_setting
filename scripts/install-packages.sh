@@ -9,6 +9,7 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 
 pi install npm:pi-claude-auth
+"$SCRIPT_DIR/patch-pi-claude-auth-cli-version.sh"
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory

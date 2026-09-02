@@ -212,12 +212,12 @@ claude --version
 
 `pi-claude-auth` reads your Claude Code OAuth credentials so Pi can use Anthropic models without a separate Anthropic API key.
 
-This repo starts Pi through `scripts/pi-with-claude-code-env.sh`, which exports `ANTHROPIC_CLI_VERSION` from `claude --version`. That keeps `pi-claude-auth`'s Claude Code user-agent and billing-header version aligned with the installed Claude Code CLI after auto-updates, without editing `node_modules`.
+`scripts/install-packages.sh` also applies this repo's local `pi-claude-auth` patch. After the patch, normal `pi` startup derives the Claude Code user-agent and billing-header version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset, while still preserving that environment override if you set it explicitly.
 
 Smoke test:
 
 ```bash
-ANTHROPIC_CLI_VERSION="$(claude --version | awk '{print $1}')" pi auth check --provider anthropic --model claude-haiku-4-5 --json
+pi auth check --provider anthropic --model claude-haiku-4-5 --json
 ```
 
 If that fails, run `claude` once interactively and confirm Claude Code itself is authenticated before debugging Pi.
@@ -242,14 +242,14 @@ Pi's `openai-codex` provider login and the `codex` CLI login are separate. If yo
 
 ## 7. Start Pi and reload resources
 
-Start Pi from a cmux terminal through the repo launcher:
+Start Pi from a cmux terminal:
 
 ```bash
 cd ~/pi_setting
-./scripts/pi-with-claude-code-env.sh
+pi
 ```
 
-This is equivalent to `pi`, but first exports `ANTHROPIC_CLI_VERSION` from the installed Claude Code CLI so `pi-claude-auth` does not fall back to its package-baked default version.
+Normal `pi` startup is enough because `scripts/install-packages.sh` patched installed `pi-claude-auth` directly.
 
 Inside Pi, run:
 
@@ -515,9 +515,10 @@ Update Pi packages:
 
 ```bash
 pi update --extensions
+./scripts/patch-pi-claude-auth-cli-version.sh
 ```
 
-Then run `/reload` or restart Pi.
+Then run `/reload` or restart Pi. The patch step reapplies this repo's local `pi-claude-auth` CLI-version fix if the package update overwrote it.
 
 Update Pi itself:
 

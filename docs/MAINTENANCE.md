@@ -6,11 +6,12 @@ Update, rollback, and troubleshooting notes for this Pi setup.
 
 ```bash
 pi update --extensions
+./scripts/patch-pi-claude-auth-cli-version.sh
 ```
 
 Then run `/reload` inside Pi or restart Pi.
 
-`pi update --extensions` only touches installed packages. It never overwrites the local extensions, agents, or skills this repo installs, so nothing needs reapplying afterwards.
+`pi update --extensions` touches installed packages and can overwrite the local `pi-claude-auth` CLI-version patch. Re-run the patch script afterwards. It does not overwrite the local extensions, agents, or skills this repo installs.
 
 ## Update Pi itself
 
@@ -56,13 +57,8 @@ Claude Code / Anthropic:
 ```bash
 claude --version
 claude auth login --claudeai
-ANTHROPIC_CLI_VERSION="$(claude --version | awk '{print $1}')" pi auth check --provider anthropic --model claude-haiku-4-5 --json
-```
-
-For normal interactive sessions, start Pi with:
-
-```bash
-./scripts/pi-with-claude-code-env.sh
+./scripts/patch-pi-claude-auth-cli-version.sh
+pi auth check --provider anthropic --model claude-haiku-4-5 --json
 ```
 
 GitHub SSH:

@@ -31,7 +31,7 @@ mkdir -p "$PI_DIR"
 cp settings/settings.example.json "$PI_DIR/settings.json"
 cp settings/web-search.example.json "$PI_DIR/web-search.json"
 
-./scripts/pi-with-claude-code-env.sh
+pi
 ```
 
 Inside Pi, run:
@@ -51,8 +51,9 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 
 ### Scripts
 
-- `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, and extension dependencies.
-- `scripts/pi-with-claude-code-env.sh` — start Pi with `ANTHROPIC_CLI_VERSION` derived from the installed Claude Code CLI, keeping `pi-claude-auth` billing/user-agent metadata current after Claude Code auto-updates.
+- `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, extension dependencies, and the local `pi-claude-auth` CLI-version patch.
+- `scripts/patch-pi-claude-auth-cli-version.sh` — patch installed `pi-claude-auth` so normal `pi` startup derives the Claude Code billing/user-agent version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset.
+- `scripts/test-pi-claude-auth-patch.sh` — regression test for the local `pi-claude-auth` patch.
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
 ### Package-installed extensions and skills
@@ -111,6 +112,7 @@ Extension `node_modules/` directories are also excluded. Recreate them with:
 
 ```bash
 pi install npm:pi-claude-auth
+./scripts/patch-pi-claude-auth-cli-version.sh
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory

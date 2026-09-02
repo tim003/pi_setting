@@ -42,7 +42,7 @@ Any key you make available to Pi has the same repository access it has for you.
 claude auth login --claudeai
 ```
 
-Claude Code auto-updates independently from `pi-claude-auth`. Start Pi through `scripts/pi-with-claude-code-env.sh` so `ANTHROPIC_CLI_VERSION` is derived from `claude --version`; this keeps the Claude Code user-agent and billing header aligned without editing package files.
+Claude Code auto-updates independently from `pi-claude-auth`. `scripts/install-packages.sh` applies a local patch to installed `pi-claude-auth` so normal `pi` startup derives the Claude Code user-agent and billing-header version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset. Re-run `./scripts/patch-pi-claude-auth-cli-version.sh` after `pi update` if the package is overwritten.
 
 If a Claude Code update changes auth or billing behavior, verify with a small Anthropic model before doing expensive work.
 
