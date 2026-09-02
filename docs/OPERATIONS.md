@@ -196,12 +196,25 @@ npx playwright-core install chromium
 /chrome onboard
 ```
 
-That opens `chrome://extensions` and copies the bundled path. Then, in Chrome: enable **Developer mode** → **Load unpacked** → `Cmd+Shift+G` → paste → Enter. Back in Pi:
+That opens `chrome://extensions` and copies the bundled path. Then, in the browser: enable **Developer mode** → **Load unpacked** → `Cmd+Shift+G` → paste → Enter. Back in Pi:
 
 ```
 /reload
 /chrome doctor      # expect: ✓ Chrome is connected
 ```
+
+**Load unpacked often does not take on the first attempt — do it twice.** The extension can end up listed but never actually running, which produces the confusing failure described under [Troubleshooting](#troubleshooting-pi-chrome) below. If `/chrome doctor` is not happy, load the folder again before investigating anything else.
+
+### Brave (or any Chromium browser)
+
+pi-chrome works in Brave unmodified — verified on Brave 151 with pi-chrome 0.15.46. Nothing in the bridge detects a browser; the companion extension simply polls `127.0.0.1:17318`, and its manifest is portable MV3 with no Web Store dependency.
+
+Two differences from the Chrome path:
+
+- Use `brave://extensions`. `/chrome onboard` tries to launch Google Chrome, which is harmless — press Esc and load the folder in Brave yourself. The path it copies is still correct.
+- Every message says "Chrome", including `chrome://extensions` in error text. Read it as your Chromium browser.
+
+Keep a browser window open: the connector is a service worker, and it stops polling when the browser quits. If automation misbehaves on one specific site, suspect Brave Shields before pi-chrome.
 
 ### Every session
 
@@ -224,6 +237,28 @@ Control is locked by default and must be authorized per session:
 - Screenshots land in `.pi/chrome-screenshots/` inside the project.
 - It does not cover native Chrome/OS surfaces: print and save dialogs, permission bubbles, password-manager prompts, passkeys and biometrics, cross-origin iframe DOM, or CAPTCHA challenges. On strict-CSP pages, fall back to screenshots plus coordinate input.
 - `/chrome revoke` closes only the calling session's automation target; your own tabs and windows are left alone.
+- The first Pi session to bind `17318` owns the connection; later sessions share it and report "sharing another pi session's connection". Authorization is *not* shared — `/chrome authorize` is per session, because it lives on that process's `globalThis`.
+- The bridge survives `/reload` by design, so `/reload` does **not** restart it. Changes to pi-chrome itself need a full Pi restart.
+
+### Troubleshooting pi-chrome
+
+Ask the bridge directly before touching anything. `/status` is read-only and safe:
+
+```bash
+curl -s http://127.0.0.1:17318/status | python3 -m json.tool
+```
+
+| Field | Meaning |
+|---|---|
+| `mode` | `server` = this machine's owner; `client` = sharing another session's connection. |
+| `connected` | True when a poll arrived in the last 5 minutes. |
+| `clientName` | `Pi Chrome Connector <id>` when the real extension is polling. |
+
+**"last seen never" while the bridge is listening → the extension is not loaded.** `lastSeenAt` is only set when a poll is *accepted*, so "never" means no poll ever arrived. The fix is on the browser side: load the unpacked folder again (see above), or hit reload on the extension card. Do not go debugging the Pi side — a listening socket and a reachable `/status` already prove it is healthy.
+
+Do not trust Brave's `Secure Preferences` on disk to tell you whether the extension loaded. It is written lazily, and its cached-manifest field reads empty even when the extension is running fine. The authoritative check is `clientName` in `/status`.
+
+If a command is delivered but times out ("received the command but never returned a result"), the extension picked it up and never posted back. Note that the extension's `postResult` ignores the HTTP response, so a rejected POST fails silently. Reload the extension first.
 
 ## Prompt snippets
 
