@@ -59,6 +59,16 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 - `scripts/rollback-cmux-interactive-subagents.sh` — restore a previous settings snapshot.
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
+### Package-provided extensions, skills, and prompts
+
+- `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth.
+- `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills.
+- `npm:pi-subagents` — skills/prompts available; extension disabled to avoid duplicate `subagent` provider.
+- `npm:pi-web-access` — enabled web access extension/tools.
+- `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session.
+
+See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full skill/prompt inventory.
+
 ### Local extensions
 
 - `extensions/ask-user-question/`

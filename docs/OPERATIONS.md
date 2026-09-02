@@ -27,12 +27,24 @@ Inside Pi:
 Configured in `settings/settings.example.json` and installed by `scripts/install-packages.sh`:
 
 - `npm:pi-claude-auth` — Anthropic auth via Claude Code OAuth credentials.
-- `git:github.com/obra/superpowers` — process skills such as brainstorming, debugging, verification.
-- `npm:pi-subagents` — kept for packaged agent definitions, but extension resources are disabled.
-- `npm:pi-web-access` — web search/fetch tools.
-- `git:github.com/amosblomqvist/pi-observational-memory` — session memory, off by default.
+- `git:github.com/obra/superpowers` — process extension plus Superpowers skills.
+- `npm:pi-subagents` — kept for packaged agent definitions, skills, and prompts; extension resources are disabled.
+- `npm:pi-web-access` — web access extension/tools.
+- `git:github.com/amosblomqvist/pi-observational-memory` — memory extension; off by default.
 
-## Local extensions
+## Complete extension inventory
+
+Package-provided extensions:
+
+| Source | Extension status | Purpose |
+|---|---|---|
+| `npm:pi-claude-auth` | enabled | Seeds Anthropic auth from Claude Code credentials. |
+| `git:github.com/obra/superpowers` | enabled | Loads Superpowers skill behavior and commands. |
+| `npm:pi-web-access` | enabled | Provides web search/fetch tooling. |
+| `git:github.com/amosblomqvist/pi-observational-memory` | enabled | Provides `/om` observational-memory commands and workers. |
+| `npm:pi-subagents` | installed, extension disabled | Extension disabled to avoid duplicate `subagent`; skills/prompts remain available. |
+
+Local extensions copied from this repo:
 
 Copied to `~/.pi/agent/extensions/` by `scripts/install-packages.sh`:
 
@@ -53,9 +65,39 @@ Use the guard extensions in low-friction mode unless you deliberately want stric
 - `host-safety-guard` defaults to `high-only`. It blocks high-risk credential/secret paths and auto-allows medium-risk Desktop prompts unless strict mode is enabled. Use `/host-guard` to inspect, `/host-guard high-only` for default behavior, or `/host-guard strict` for more prompts.
 - `bash-guard` prompts broadly in the main session, including routine git commands. If this becomes too noisy, run `/bash-guard` to disable interactive prompting for that session; catastrophic patterns remain hard-blocked.
 
-## Local skills
+## Complete skills and prompts inventory
 
-Copied to `~/.pi/agent/skills/`:
+Package-provided skills:
+
+- From `git:github.com/obra/superpowers`:
+  - `using-superpowers`
+  - `brainstorming`
+  - `systematic-debugging`
+  - `test-driven-development`
+  - `using-git-worktrees`
+  - `writing-plans`
+  - `executing-plans`
+  - `dispatching-parallel-agents`
+  - `subagent-driven-development`
+  - `requesting-code-review`
+  - `receiving-code-review`
+  - `verification-before-completion`
+  - `finishing-a-development-branch`
+  - `writing-skills`
+- From `npm:pi-subagents`:
+  - `pi-subagents`
+  - `council-mode`
+
+Package-provided prompts from `npm:pi-subagents`:
+
+- `parallel-cleanup`
+- `parallel-research`
+- `parallel-review`
+- `gather-context-and-clarify`
+- `council`
+- `review-loop`
+
+Local skills copied to `~/.pi/agent/skills/`:
 
 - `analyze-sessions` — inspect past Pi session cost, prompts, and transcripts.
 - `pdf-reader` — extract/search/render PDFs.

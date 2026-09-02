@@ -7,12 +7,12 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
 ## What you will end up with
 
 - Pi running directly on macOS, not in the old Docker container runtime.
-- Pi packages:
-  - `npm:pi-claude-auth`
-  - `git:github.com/obra/superpowers`
-  - `npm:pi-subagents` with its extension resources disabled
-  - `npm:pi-web-access`
-  - `git:github.com/amosblomqvist/pi-observational-memory`
+- Pi packages and their resources:
+  - `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth
+  - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills
+  - `npm:pi-subagents` — skills/prompts available; extension resources disabled
+  - `npm:pi-web-access` — enabled web access extension/tools
+  - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session
 - Local extensions copied into `~/.pi/agent/extensions/`:
   - `ask-user-question`
   - `bash-guard`
@@ -21,6 +21,10 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
   - `host-safety-guard`
   - `prompt-snippets`
   - `web-fetch`
+- Package skills/prompts:
+  - Superpowers skills from `git:github.com/obra/superpowers`
+  - `pi-subagents` and `council-mode` skills from `npm:pi-subagents`
+  - `pi-subagents` prompt templates such as `parallel-review`, `parallel-research`, and `council`
 - Local skills copied into `~/.pi/agent/skills/`:
   - `analyze-sessions`
   - `pdf-reader`
