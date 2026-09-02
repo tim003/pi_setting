@@ -18,6 +18,7 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
   - `browser`
   - `cmux-interactive-subagents` — the active modified cmux interactive subagent provider
   - `host-safety-guard`
+  - `parked-issues` — captures side suggestions so they stop derailing the conversation
   - `prompt-snippets`
   - `web-fetch`
 - Package skills/prompts:
@@ -68,11 +69,11 @@ So the correct way to capture them in this repo is what this guide does: name th
 
 ### 2. Local extensions tracked in this repo
 
-`ask-user-question`, `bash-guard`, `browser`, `cmux-interactive-subagents`, `host-safety-guard`, `prompt-snippets`, and `web-fetch`.
+`ask-user-question`, `bash-guard`, `browser`, `cmux-interactive-subagents`, `host-safety-guard`, `parked-issues`, `prompt-snippets`, and `web-fetch`.
 
 These live in `extensions/` because they are not installable Pi packages — there is nothing for `pi install` to fetch, so `scripts/install-packages.sh` copies them into `~/.pi/agent/extensions/` instead.
 
-Most of them are not original to this repo. `ask-user-question`, `bash-guard`, `browser`, `prompt-snippets`, and `web-fetch` were copied from [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config) and then modified for this setup — that repo is explicitly meant to be cherry-picked from rather than installed wholesale. The four skills in `skills/` come from there unmodified. Only `host-safety-guard` and `cmux-interactive-subagents` originate here.
+Most of them are not original to this repo. `ask-user-question`, `bash-guard`, `browser`, `prompt-snippets`, and `web-fetch` were copied from [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config) and then modified for this setup — that repo is explicitly meant to be cherry-picked from rather than installed wholesale. The four skills in `skills/` come from there unmodified. Only `host-safety-guard`, `cmux-interactive-subagents`, and `parked-issues` originate here.
 
 The practical consequence: this repo is the source of truth for what *you run*, but it is not the origin. When upstream fixes a bug, `pi update` will not bring it in — you have to diff against upstream and port the change by hand. The provenance is recorded in `docs/PROVENANCE.md`.
 

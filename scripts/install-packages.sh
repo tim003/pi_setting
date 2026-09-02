@@ -19,12 +19,12 @@ mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$PI_DIR/agents" "$HOME/Desktop/p
 # agent dir, which the provider reads directly, so no extra package is needed.
 cp "$REPO_DIR/agents/"*.md "$PI_DIR/agents/"
 
-for extension in ask-user-question host-safety-guard prompt-snippets web-fetch bash-guard browser; do
+for extension in ask-user-question host-safety-guard prompt-snippets web-fetch bash-guard browser parked-issues; do
   rm -rf "$PI_DIR/extensions/$extension"
   cp -R "$REPO_DIR/extensions/$extension" "$PI_DIR/extensions/$extension"
 done
 
-for extension in ask-user-question host-safety-guard web-fetch bash-guard browser prompt-snippets; do
+for extension in ask-user-question host-safety-guard web-fetch bash-guard browser prompt-snippets parked-issues; do
   (
     cd "$PI_DIR/extensions/$extension"
     rm -rf node_modules

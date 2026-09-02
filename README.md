@@ -76,6 +76,7 @@ See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full extension/skill/tool
 - `extensions/browser/`
 - `extensions/cmux-interactive-subagents/`
 - `extensions/host-safety-guard/`
+- `extensions/parked-issues/`
 - `extensions/prompt-snippets/`
 - `extensions/web-fetch/`
 

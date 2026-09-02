@@ -1,0 +1,203 @@
+/**
+ * parked-issues — capture side suggestions without derailing the conversation.
+ *
+ * Flow:
+ *   1. The agent calls `park_issue` instead of interrupting with a tangent.
+ *   2. `escalate()` applies a hard severity floor over the agent's judgment.
+ *   3. High severity prompts immediately; everything else queues silently and is
+ *      triaged in one batch at `turn_end`.
+ *   4. Nothing is recorded without the user's say-so, so the backlog cannot rot
+ *      into a junk drawer of unreviewed agent chatter.
+ *
+ * State is folded from the active branch (`getBranch()`, not `getEntries()`), which
+ * is what keeps the list correct under `/tree`: issues recorded on an abandoned
+ * branch are simply absent from the fold.
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
+
+import { PARKED_RECORDED, PARKED_UPDATED, foldIssues, openIssues, type ParkedIssue } from "./src/model.ts";
+import { escalate, type Severity } from "./src/severity.ts";
+import { renderChecklist, writeIssuesFile } from "./src/store.ts";
+import { askText, choose } from "./src/ui/select.ts";
+
+const CHECKLIST_ENTRY = "parked.checklist";
+
+const ParkIssueParams = Type.Object({
+	title: Type.String({
+		description: "One-line statement of the unresolved issue or deferred suggestion.",
+	}),
+	detail: Type.Optional(
+		Type.String({ description: "Optional short note on why it matters or what to do about it." }),
+	),
+	severity: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], {
+		description:
+			"high = safety, data loss, security, or destructive operations (interrupts the user immediately). medium = a real follow-up worth doing. low = a minor or speculative idea.",
+	}),
+});
+
+let nextDisambiguator = 0;
+function newIssueId(): string {
+	const stamp = new Date().toISOString().replace(/\..*$/, "");
+	return `${stamp}.${(nextDisambiguator++).toString(36)}`;
+}
+
+export default function parkedIssues(pi: ExtensionAPI) {
+	/** Items noticed this turn, awaiting batched triage at turn_end. */
+	const pending: ParkedIssue[] = [];
+
+	const currentIssues = (ctx: any): ParkedIssue[] => {
+		try {
+			return foldIssues(ctx?.sessionManager?.getBranch?.() ?? []);
+		} catch {
+			return [];
+		}
+	};
+
+	const syncBacklog = (ctx: any): ParkedIssue[] => {
+		const issues = currentIssues(ctx);
+		try {
+			const root = ctx?.sessionManager?.getCwd?.();
+			if (root) writeIssuesFile(root, issues);
+		} catch {
+			// A read-only or missing project root must never break a turn.
+		}
+		return issues;
+	};
+
+	/** Ask the user what to do with a freshly noticed item. */
+	async function triage(ctx: any, issue: ParkedIssue): Promise<void> {
+		const header = `Park this ${issue.severity} issue?  ${issue.title}`;
+		const action = await choose(ctx, header, [
+			{ value: "park", label: "Park it", description: "Add to the backlog for later" },
+			{ value: "front", label: "Park at the front", description: "Do this next" },
+			{ value: "discard", label: "Discard", description: "Not worth tracking" },
+			{ value: "other", label: "Other…", description: "Reword it or add a note" },
+		]);
+
+		// Cancelled or headless: keep the item rather than silently losing it.
+		if (action === null) {
+			pi.appendEntry(PARKED_RECORDED, { issue });
+			return;
+		}
+		if (action === "discard") return;
+
+		let recorded = issue;
+		if (action === "front") recorded = { ...issue, priority: 0 };
+		if (action === "other") {
+			const text = await askText(ctx, `Reword this issue:\n\n${issue.title}`);
+			if (!text) return;
+			recorded = { ...issue, title: text, detail: issue.detail ?? issue.title };
+		}
+		pi.appendEntry(PARKED_RECORDED, { issue: recorded });
+	}
+
+	pi.registerTool({
+		name: "park_issue",
+		label: "park_issue",
+		description:
+			"Record a side issue, tangent, or unresolved thread instead of interrupting the current task with it. Use this whenever you notice something worth raising that is not what the user asked about right now.",
+		promptSnippet:
+			"Park side suggestions with park_issue instead of derailing the current task; the user triages them at the end of the turn.",
+		promptGuidelines: [
+			"Call park_issue instead of appending unrelated suggestions to your answer.",
+			"Use severity high only for safety, security, data loss, or destructive operations.",
+			"Keep the title to one line stating the issue, not a paragraph of reasoning.",
+			"Do not re-park an issue that is already in the backlog.",
+		],
+		parameters: ParkIssueParams,
+
+		async execute(_toolCallId, params: any, _signal, _onUpdate, ctx: any) {
+			const severity = escalate(`${params.title} ${params.detail ?? ""}`, params.severity as Severity);
+			const issue: ParkedIssue = {
+				id: newIssueId(),
+				title: params.title,
+				detail: params.detail,
+				severity,
+				status: "open",
+				priority: severity === "high" ? 0 : 100,
+				source: "agent",
+			};
+
+			// High severity is the whole point of the escalation floor: it interrupts now.
+			if (severity === "high") {
+				await triage(ctx, issue);
+				syncBacklog(ctx);
+				return { content: [{ type: "text", text: `Raised immediately (${severity}): ${issue.title}` }] };
+			}
+
+			pending.push(issue);
+			return {
+				content: [
+					{ type: "text", text: `Queued for end-of-turn triage (${severity}): ${issue.title}` },
+				],
+			};
+		},
+
+		renderCall(args: any, theme: any) {
+			return new Text(
+				theme.fg("toolTitle", theme.bold("park_issue ")) + theme.fg("muted", String(args.title ?? "")),
+				0,
+				0,
+			);
+		},
+	});
+
+	pi.on("turn_end", async (_event, ctx: any) => {
+		if (pending.length === 0) return;
+		const batch = pending.splice(0, pending.length);
+		try {
+			for (const issue of batch) await triage(ctx, issue);
+			syncBacklog(ctx);
+		} catch {
+			// Never let triage failures break the turn.
+		}
+	});
+
+	pi.registerCommand("parked", {
+		description: "Review and triage parked issues",
+		handler: async (_args: string, ctx: any) => {
+			const issues = syncBacklog(ctx);
+			const open = openIssues(issues);
+
+			if (open.length > 0) {
+				const picked = await choose(
+					ctx,
+					"Parked issues — pick one to act on",
+					open.map((issue) => ({
+						value: issue.id,
+						label: `${issue.severity}  ${issue.title}`,
+						description: issue.detail,
+					})),
+				);
+
+				if (picked) {
+					const action = await choose(ctx, "What should happen to it?", [
+						{ value: "resolve", label: "Mark resolved" },
+						{ value: "front", label: "Move to the front" },
+						{ value: "discard", label: "Discard" },
+						{ value: "other", label: "Other…", description: "Reword it" },
+					]);
+
+					if (action === "resolve") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "resolved" });
+					if (action === "discard") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "discarded" });
+					if (action === "front") pi.appendEntry(PARKED_UPDATED, { id: picked, priority: 0 });
+					if (action === "other") {
+						const text = await askText(ctx, "Reword this issue:");
+						if (text) pi.appendEntry(PARKED_UPDATED, { id: picked, title: text });
+					}
+				}
+			}
+
+			// Model-free: derived wholly from state, so it costs nothing and cannot invent a task.
+			pi.appendEntry(CHECKLIST_ENTRY, { markdown: renderChecklist(syncBacklog(ctx)) });
+		},
+	});
+
+	pi.registerEntryRenderer(CHECKLIST_ENTRY, (entry: any, theme: any) => {
+		const markdown = String(entry?.data?.markdown ?? "");
+		return new Text(theme.fg("muted", markdown), 0, 0);
+	});
+}

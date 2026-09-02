@@ -34,6 +34,7 @@ So upstream files will not run against current Pi without that rename. Every
 | `web-fetch` | upstream `extensions/web-fetch/` | dependency rename in `index.ts` and `package.json` |
 | `host-safety-guard` | **originates here** | n/a |
 | `cmux-interactive-subagents` | **originates here** | n/a — upstream ships only a stub pointing at the separate `pi-interactive-subagents` repo |
+| `parked-issues` | **originates here** | n/a |
 
 ### The one behavioural divergence: `bash-guard`
 

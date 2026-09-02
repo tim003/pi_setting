@@ -51,6 +51,7 @@ Local extensions copied to `~/.pi/agent/extensions/` by `scripts/install-package
 | `browser` | Playwright browser tools; opt in with `/browser on`. |
 | `cmux-interactive-subagents` | Active modified cmux interactive subagent provider. |
 | `host-safety-guard` | Blocks risky host paths; allows safe image/screenshot reads from `~/Desktop/pi-inbox`. |
+| `parked-issues` | Captures side suggestions for later instead of derailing the current task; `/parked` to triage. |
 | `prompt-snippets` | Temporary prompt snippet toggles. |
 | `web-fetch` | Registers the `web_fetch` URL-to-Markdown tool. |
 
@@ -173,6 +174,18 @@ npx playwright-core install chromium
 ```
 
 ## Prompt snippets
+
+## Parked issues
+
+When the agent notices something worth raising that is not what you asked about, it calls `park_issue` instead of interrupting you with it.
+
+- **High severity** (security, data loss, destructive operations) prompts immediately.
+- **Medium and low** queue silently and are triaged in one batch when the turn ends.
+- Each prompt offers park / park-at-front / discard / other, so nothing enters the backlog unreviewed.
+
+Severity is proposed by the model but passes through a hard-coded escalation list in `src/severity.ts`; phrases such as `credential`, `auth.json`, `--force`, and `rm -rf` force `high` regardless of the model's judgment.
+
+Run `/parked` to review, reorder, resolve, or discard items, and to print the checklist. Open items live in the session ledger, so the list rewinds correctly under `/tree`. The durable backlog is written to `.parked/ISSUES.md` in the project root (gitignored), which survives across sessions.
 
 The `prompt-snippets` extension provides temporary prompt toggles for recurring behaviors such as asking questions, delegating exploration, verifying assumptions, and orchestrator mode. Use its registered Pi commands after `/reload`.
 
