@@ -33,17 +33,28 @@ test("auto-allows medium risk paths in default high-only mode", () => {
   assert.equal(analyzeToolCall("bash", { command: "ls ~/Desktop" }, home).action, "allow");
 });
 
-test("blocks protected credential paths in every mode", () => {
+test("asks before touching protected credential paths in every mode", () => {
   for (const mode of ["high-only", "strict"]) {
     const decision = analyzePathAccess("~/.ssh/id_ed25519", "read", home, mode);
-    assert.equal(decision.action, "block");
+    assert.equal(decision.action, "confirm");
     assert.equal(decision.risk, "high");
   }
 });
 
-test("blocks secret-looking filenames even inside pi-inbox", () => {
+test("warns that approving a secret read records its contents in the session", () => {
+  const decision = analyzePathAccess("~/.ssh/id_ed25519", "read", home);
+  assert.equal(decision.recordsContents, true);
+});
+
+test("does not warn about recorded contents when writing rather than reading", () => {
+  const decision = analyzePathAccess("~/.ssh/id_ed25519", "write", home);
+  assert.equal(decision.action, "confirm");
+  assert.notEqual(decision.recordsContents, true);
+});
+
+test("asks about secret-looking filenames even inside pi-inbox", () => {
   const decision = analyzePathAccess("~/Desktop/pi-inbox/api-token.png", "read", home);
-  assert.equal(decision.action, "block");
+  assert.equal(decision.action, "confirm");
   assert.equal(decision.risk, "high");
 });
 
@@ -52,9 +63,15 @@ test("flags bash commands that mention Desktop for confirmation in strict mode",
   assert.equal(decision.action, "confirm");
 });
 
-test("blocks bash commands that mention protected credential paths", () => {
+test("asks about bash commands that mention protected credential paths", () => {
   const decision = analyzeToolCall("bash", { command: "ls ~/.ssh" }, home);
-  assert.equal(decision.action, "block");
+  assert.equal(decision.action, "confirm");
+  assert.equal(decision.risk, "high");
+});
+
+test("warns that approving a credential-path bash command records its output", () => {
+  const decision = analyzeToolCall("bash", { command: "cat ~/.ssh/id_ed25519" }, home);
+  assert.equal(decision.recordsContents, true);
 });
 
 test("resolveMode reads env override and falls back to high-only", () => {

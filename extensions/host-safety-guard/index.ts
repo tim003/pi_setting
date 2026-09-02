@@ -7,7 +7,7 @@ export type RiskLevel = "none" | "medium" | "high";
 
 type Decision =
   | { action: "allow"; risk: RiskLevel; reason: string }
-  | { action: "confirm"; risk: RiskLevel; reason: string }
+  | { action: "confirm"; risk: RiskLevel; reason: string; recordsContents?: boolean }
   | { action: "block"; risk: RiskLevel; reason: string };
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".bmp", ".tiff", ".tif"]);
@@ -32,7 +32,7 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
   return raw === "strict" ? "strict" : "high-only";
 }
 
-/** Medium-risk findings prompt only in strict mode; high-risk always blocks. */
+/** Medium-risk findings prompt only in strict mode; high-risk always prompts. */
 function applyMode(decision: Decision, mode: GuardMode): Decision {
   if (decision.action === "confirm" && decision.risk === "medium" && mode !== "strict") {
     return { action: "allow", risk: decision.risk, reason: `${decision.reason} (auto-allowed in high-only mode)` };
@@ -69,13 +69,26 @@ export function analyzePathAccess(
   const desktop = normalizePath(`${home}/Desktop`, home);
   const inbox = normalizePath(`${home}/Desktop/pi-inbox`, home);
 
+  // High-risk findings ask rather than refuse: this is the user's own machine and
+  // they are present to judge. Reads additionally warn, because approving one writes
+  // the file's contents into the session transcript permanently.
   if (SECRET_NAME_RE.test(target)) {
-    return { action: "block", risk: "high", reason: `Blocked ${operation}: path name looks secret-bearing (${path})` };
+    return {
+      action: "confirm",
+      risk: "high",
+      reason: `${operation}: path name looks secret-bearing (${path})`,
+      recordsContents: operation === "read",
+    };
   }
 
   for (const dir of protectedDirs) {
     if (isWithin(target, dir)) {
-      return { action: "block", risk: "high", reason: `Blocked ${operation}: protected host path (${path})` };
+      return {
+        action: "confirm",
+        risk: "high",
+        reason: `${operation}: protected host path (${path})`,
+        recordsContents: operation === "read",
+      };
     }
   }
 
@@ -117,7 +130,13 @@ function shellMentionsProtectedPath(command: string, home: string, mode: GuardMo
     "~/.secrets", `${home}/.secrets`,
   ];
   if (protectedPatterns.some((pattern) => compact.includes(pattern))) {
-    return { action: "block", risk: "high", reason: "Blocked bash: command references protected host credential paths" };
+    // Command output is captured in the transcript, so approval always has a persistent cost.
+    return {
+      action: "confirm",
+      risk: "high",
+      reason: "bash: command references protected host credential paths",
+      recordsContents: true,
+    };
   }
   if (/Desktop/i.test(compact)) {
     return applyMode({ action: "confirm", risk: "medium", reason: "bash references Desktop" }, mode);
@@ -148,13 +167,18 @@ export function analyzeToolCall(
   return { action: "allow", risk: "none", reason: "No host-safety rule matched" };
 }
 
-async function askForConfirmation(ctx: any, reason: string): Promise<boolean> {
+const PERSISTENCE_WARNING =
+  "Approving records the resulting contents in this session transcript, where they persist even if you later revoke access.";
+
+/** Fails closed: no UI, or no way to ask, means no approval. */
+async function askForConfirmation(ctx: any, reason: string, recordsContents = false): Promise<boolean> {
   if (!ctx.hasUI) return false;
+  const detail = recordsContents ? `${reason}\n\n${PERSISTENCE_WARNING}` : reason;
   if (typeof ctx.ui?.confirm === "function") {
-    return Boolean(await ctx.ui.confirm("Host safety guard", `${reason}\n\nAllow this tool call?`));
+    return Boolean(await ctx.ui.confirm("Host safety guard", `${detail}\n\nAllow this tool call?`));
   }
   if (typeof ctx.ui?.prompt === "function") {
-    const answer = await ctx.ui.prompt(`${reason}\n\nType yes to allow:`);
+    const answer = await ctx.ui.prompt(`${detail}\n\nType yes to allow:`);
     return String(answer).trim().toLowerCase() === "yes";
   }
   return false;
@@ -189,7 +213,7 @@ export default function (pi: ExtensionAPI) {
     const target = typeof event.input?.path === "string" ? event.input.path : undefined;
     if (target && isApproved(approvals, target)) return;
 
-    const ok = await askForConfirmation(ctx, decision.reason);
+    const ok = await askForConfirmation(ctx, decision.reason, decision.recordsContents === true);
     if (ok) {
       if (target) recordApproval(approvals, target);
       return;

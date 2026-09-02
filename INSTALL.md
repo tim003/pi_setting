@@ -263,7 +263,7 @@ Inside Pi, ask for a simple command or use the tools normally. You should see lo
 
 This setup is meant to be usable without excessive confirmations:
 
-- `host-safety-guard` defaults to `high-only`. Keep it that way unless you want stricter Desktop/path prompts. To force strict mode, start Pi with `PI_HOST_GUARD_LEVEL=strict`; to return to the default, unset that variable or run `/host-guard high-only` inside Pi.
+- `host-safety-guard` defaults to `high-only`. High-risk credential paths prompt for approval rather than being refused outright, and the prompt warns you when approving would record file contents or command output into the session transcript. With no UI available it fails closed and refuses. Keep it that way unless you want stricter Desktop/path prompts. To force strict mode, start Pi with `PI_HOST_GUARD_LEVEL=strict`; to return to the default, unset that variable or run `/host-guard high-only` inside Pi.
 - `bash-guard` also defaults to high-only. Medium-risk commands, including routine git commands, are auto-allowed, and only high-risk commands prompt. To restore prompting on medium-risk commands, start Pi with `PI_BASH_GUARD_LEVEL=strict`. To silence interactive prompting entirely for one session, run `/bash-guard` inside Pi. Catastrophic commands stay hard-blocked in every mode.
 
 ## 8. Verify modified cmux interactive subagents

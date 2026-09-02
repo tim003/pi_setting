@@ -50,7 +50,7 @@ Local extensions copied to `~/.pi/agent/extensions/` by `scripts/install-package
 | `bash-guard` | Command risk guard. |
 | `browser` | Playwright browser tools; opt in with `/browser on`. |
 | `cmux-interactive-subagents` | Active modified cmux interactive subagent provider. |
-| `host-safety-guard` | Blocks risky host paths; allows safe image/screenshot reads from `~/Desktop/pi-inbox`. |
+| `host-safety-guard` | Asks before risky host paths; allows safe image/screenshot reads from `~/Desktop/pi-inbox`. |
 | `parked-issues` | Captures side suggestions for later instead of derailing the current task; `/parked` to triage. |
 | `prompt-snippets` | Temporary prompt snippet toggles. |
 | `web-fetch` | Registers the `web_fetch` URL-to-Markdown tool. |
@@ -61,7 +61,14 @@ Every extension tracked in this repo is installed by `scripts/install-packages.s
 
 Use the guard extensions in low-friction mode unless you deliberately want stricter prompts:
 
-- `host-safety-guard` defaults to `high-only`. It blocks high-risk credential/secret paths and auto-allows medium-risk Desktop prompts unless strict mode is enabled. Use `/host-guard` to inspect, `/host-guard high-only` for default behavior, or `/host-guard strict` for more prompts.
+- `host-safety-guard` defaults to `high-only`. It **prompts** for high-risk credential/secret paths and auto-allows medium-risk Desktop access unless strict mode is enabled. Use `/host-guard` to inspect, `/host-guard high-only` for default behavior, or `/host-guard strict` for more prompts.
+
+  High-risk findings ask rather than refuse, because it is your own machine and you are there to judge. Two properties are preserved regardless:
+
+  - **It fails closed.** With no UI (headless `pi -p`, or a context that cannot prompt) there is no way to approve, so the call is refused. Denying also refuses.
+  - **Approval has a persistent cost.** When approval would put file contents or command output into the session, the prompt says so explicitly: the data lands in the session `.jsonl` and may be copied into `.memory/`, and it stays there even if you revoke access afterwards. Prefer metadata (`ls -l`, `stat`) over reading secret files outright.
+
+  Approvals are remembered per path for the rest of the session; `/host-guard <mode>` clears them.
 - `bash-guard` defaults to high-only via `PI_BASH_GUARD_LEVEL`. Medium-risk commands, including routine git commands, are auto-allowed; only high-risk commands prompt. Set `PI_BASH_GUARD_LEVEL=strict` to prompt on medium-risk commands too. Run `/bash-guard` to disable interactive prompting for a session; catastrophic patterns remain hard-blocked in all modes.
 
 ## Complete skills and prompts inventory
