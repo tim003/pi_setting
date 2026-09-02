@@ -56,7 +56,13 @@ Claude Code / Anthropic:
 ```bash
 claude --version
 claude auth login --claudeai
-pi auth check --provider anthropic --model claude-haiku-4-5 --json
+ANTHROPIC_CLI_VERSION="$(claude --version | awk '{print $1}')" pi auth check --provider anthropic --model claude-haiku-4-5 --json
+```
+
+For normal interactive sessions, start Pi with:
+
+```bash
+./scripts/pi-with-claude-code-env.sh
 ```
 
 GitHub SSH:

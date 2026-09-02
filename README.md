@@ -31,7 +31,7 @@ mkdir -p "$PI_DIR"
 cp settings/settings.example.json "$PI_DIR/settings.json"
 cp settings/web-search.example.json "$PI_DIR/web-search.json"
 
-pi
+./scripts/pi-with-claude-code-env.sh
 ```
 
 Inside Pi, run:
@@ -52,6 +52,7 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 ### Scripts
 
 - `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, and extension dependencies.
+- `scripts/pi-with-claude-code-env.sh` — start Pi with `ANTHROPIC_CLI_VERSION` derived from the installed Claude Code CLI, keeping `pi-claude-auth` billing/user-agent metadata current after Claude Code auto-updates.
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
 ### Package-installed extensions and skills

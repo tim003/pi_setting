@@ -212,10 +212,12 @@ claude --version
 
 `pi-claude-auth` reads your Claude Code OAuth credentials so Pi can use Anthropic models without a separate Anthropic API key.
 
+This repo starts Pi through `scripts/pi-with-claude-code-env.sh`, which exports `ANTHROPIC_CLI_VERSION` from `claude --version`. That keeps `pi-claude-auth`'s Claude Code user-agent and billing-header version aligned with the installed Claude Code CLI after auto-updates, without editing `node_modules`.
+
 Smoke test:
 
 ```bash
-pi auth check --provider anthropic --model claude-haiku-4-5 --json
+ANTHROPIC_CLI_VERSION="$(claude --version | awk '{print $1}')" pi auth check --provider anthropic --model claude-haiku-4-5 --json
 ```
 
 If that fails, run `claude` once interactively and confirm Claude Code itself is authenticated before debugging Pi.
@@ -240,12 +242,14 @@ Pi's `openai-codex` provider login and the `codex` CLI login are separate. If yo
 
 ## 7. Start Pi and reload resources
 
-Start Pi from a cmux terminal:
+Start Pi from a cmux terminal through the repo launcher:
 
 ```bash
 cd ~/pi_setting
-pi
+./scripts/pi-with-claude-code-env.sh
 ```
+
+This is equivalent to `pi`, but first exports `ANTHROPIC_CLI_VERSION` from the installed Claude Code CLI so `pi-claude-auth` does not fall back to its package-baked default version.
 
 Inside Pi, run:
 
