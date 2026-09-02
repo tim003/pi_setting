@@ -15,6 +15,7 @@ After setup, use:
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — daily use: packages, local extensions, skills, cmux subagents, memory, browser/web tools.
 - [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) — updates, cleanup, rollback, troubleshooting.
 - [`docs/SECURITY.md`](docs/SECURITY.md) — credentials, host access, Tailscale/VPS, Cmux Remote risk notes.
+- [`docs/PROVENANCE.md`](docs/PROVENANCE.md) — where the local extensions and skills came from, and how to port upstream fixes.
 
 ## Quick install
 

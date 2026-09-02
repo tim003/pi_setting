@@ -70,7 +70,11 @@ So the correct way to capture them in this repo is what this guide does: name th
 
 `ask-user-question`, `bash-guard`, `browser`, `cmux-interactive-subagents`, `host-safety-guard`, `prompt-snippets`, and `web-fetch`.
 
-These live in `extensions/` because they have no upstream package to install from. They are written or modified for this setup, so this repo is their source of truth, and `scripts/install-packages.sh` copies them into `~/.pi/agent/extensions/`.
+These live in `extensions/` because they are not installable Pi packages — there is nothing for `pi install` to fetch, so `scripts/install-packages.sh` copies them into `~/.pi/agent/extensions/` instead.
+
+Most of them are not original to this repo. `ask-user-question`, `bash-guard`, `browser`, `prompt-snippets`, and `web-fetch` were copied from [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config) and then modified for this setup — that repo is explicitly meant to be cherry-picked from rather than installed wholesale. The four skills in `skills/` come from there unmodified. Only `host-safety-guard` and `cmux-interactive-subagents` originate here.
+
+The practical consequence: this repo is the source of truth for what *you run*, but it is not the origin. When upstream fixes a bug, `pi update` will not bring it in — you have to diff against upstream and port the change by hand. The provenance is recorded in `docs/PROVENANCE.md`.
 
 `cmux-interactive-subagents` is the important one. It is the sole provider of the `subagent`, `subagent_message`, and `subagents_list` tools, and it runs each child in a real cmux terminal pane.
 
