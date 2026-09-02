@@ -48,10 +48,6 @@ function artifactDir(): string {
   return join(agentDir(), "artifacts", "cmux-interactive-subagents");
 }
 
-function packageAgentDirs(): string[] {
-  return [join(agentDir(), "npm", "node_modules", "pi-subagents", "agents")].filter(existsSync);
-}
-
 function toolResult(text: string, details: Record<string, unknown> = {}, isError = false) {
   return { content: [{ type: "text" as const, text }], details, isError };
 }
@@ -92,7 +88,7 @@ export default function (pi: ExtensionAPI) {
   let watcher: NodeJS.Timeout | null = null;
 
   function listAgents(ctx: any): AgentDefinition[] {
-    return discoverAgents(ctx.cwd, agentDir(), packageAgentDirs());
+    return discoverAgents(ctx.cwd, agentDir());
   }
 
   function deliverToParent(message: string) {

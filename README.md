@@ -13,10 +13,8 @@ For a fresh macOS install, follow:
 After setup, use:
 
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — daily use: packages, local extensions, skills, cmux subagents, memory, browser/web tools.
-- [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) — updates, patching, cleanup, rollback, troubleshooting.
+- [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) — updates, cleanup, rollback, troubleshooting.
 - [`docs/SECURITY.md`](docs/SECURITY.md) — credentials, host access, Tailscale/VPS, Cmux Remote risk notes.
-
-Historical migration notes are in [`docs/archive/`](docs/archive/).
 
 ## Quick install
 
@@ -32,7 +30,6 @@ mkdir -p "$PI_DIR"
 cp settings/settings.example.json "$PI_DIR/settings.json"
 cp settings/web-search.example.json "$PI_DIR/web-search.json"
 
-./scripts/patch-model-verification.sh
 pi
 ```
 
@@ -53,21 +50,23 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 
 ### Scripts
 
-- `scripts/install-packages.sh` — install Pi packages, local extensions, selected skills, and extension dependencies.
-- `scripts/patch-model-verification.sh` — reapply the `pi-subagents` model-alias verification patch.
-- `scripts/activate-cmux-interactive-subagents.sh` — guarded repair/activation helper for the local cmux subagent provider.
-- `scripts/rollback-cmux-interactive-subagents.sh` — restore a previous settings snapshot.
+- `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, and extension dependencies.
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
-### Package-provided extensions, skills, and prompts
+### Package-installed extensions and skills
+
+Required parts of the setup, installed with `pi install ...` into `~/.pi/agent/npm` or `~/.pi/agent/git` and enabled via `settings.json`. Their source is deliberately not copied into `extensions/` — see [why](INSTALL.md#where-extensions-live-and-why).
 
 - `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth.
 - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills.
-- `npm:pi-subagents` — skills/prompts available; extension disabled to avoid duplicate `subagent` provider.
 - `npm:pi-web-access` — enabled web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session.
 
-See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full skill/prompt inventory.
+### Subagent definitions
+
+`agents/` holds the six Markdown agent definitions (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) that the local cmux provider reads from `~/.pi/agent/agents/`.
+
+See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full extension/skill/tool inventory.
 
 ### Local extensions
 
@@ -75,7 +74,6 @@ See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full skill/prompt invento
 - `extensions/bash-guard/`
 - `extensions/browser/`
 - `extensions/cmux-interactive-subagents/`
-- `extensions/github-ssh-persist.ts`
 - `extensions/host-safety-guard/`
 - `extensions/prompt-snippets/`
 - `extensions/web-fetch/`
@@ -110,12 +108,11 @@ Extension `node_modules/` directories are also excluded. Recreate them with:
 ```bash
 pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
-pi install npm:pi-subagents          # extension resources disabled in settings
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory
 ```
 
-`npm:pi-subagents` remains installed for packaged Markdown agent definitions, but the active `subagent` provider is the local `extensions/cmux-interactive-subagents/` extension.
+The active `subagent` provider is the local `extensions/cmux-interactive-subagents/` extension. It is self-contained and needs no subagent package.
 
 ## Maintenance note
 

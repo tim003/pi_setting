@@ -5,10 +5,26 @@ the session is interactive (main session) or non-interactive (spawned subagent).
 
 ## Modes
 
-Behaviour is determined at registration time via the `PI_SUBAGENT_DEPTH` environment variable,
-which pi-subagents injects into every spawned process.
+Behaviour is determined at registration time via the `PI_SUBAGENT_DEPTH` environment variable.
+
+In this build nothing sets `PI_SUBAGENT_DEPTH`, so bash-guard always registers in main-session
+(interactive prompt) mode. That is intentional: the `cmux-interactive-subagents` provider runs each
+child in a real terminal, so a prompt is answerable there. The subagent mode below is retained for
+headless launchers that do set the variable.
 
 ### Main session (`PI_SUBAGENT_DEPTH` = 0 or unset) — interactive prompt
+
+#### Prompt threshold (`PI_BASH_GUARD_LEVEL`)
+
+By default only **high**-severity commands prompt; medium-risk ones are auto-allowed. That keeps
+routine work (including most `git` commands) friction-free.
+
+- unset / anything else — high-only (default)
+- `PI_BASH_GUARD_LEVEL=strict` — also prompt on medium-severity commands
+
+The detection list below describes what bash-guard *classifies* as risky. Which of those actually
+prompt depends on the threshold above. Catastrophic commands are hard-blocked regardless, and
+`/bash-guard` disables interactive prompting for the current session.
 
 - Heuristically detects destructive/questionable commands via shell-aware parsing
 - Prompts for **any** `git ...` command (escalates severity for especially risky ones: `git rm`,

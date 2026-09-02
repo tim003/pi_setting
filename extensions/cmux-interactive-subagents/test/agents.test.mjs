@@ -41,21 +41,21 @@ test("discoverAgents reads global and project markdown agents with project overr
   assert.equal(reviewer.body, "Review body");
 });
 
-test("discoverAgents can include packaged Pi-backed agents and excludes external CLI runners", () => {
-  const root = mkdtempSync(join(tmpdir(), "cmux-package-agents-"));
+test("discoverAgents excludes external CLI runners", () => {
+  const root = mkdtempSync(join(tmpdir(), "cmux-external-cli-agents-"));
   const cwd = join(root, "project");
   const agentDir = join(root, "home", ".pi", "agent");
-  const packageAgents = join(root, "package-agents");
-  mkdirSync(packageAgents, { recursive: true });
+  const globalAgents = join(agentDir, "agents");
+  mkdirSync(globalAgents, { recursive: true });
 
-  writeFileSync(join(packageAgents, "delegate.md"), `---\nname: delegate\ndescription: Pi-backed delegate\ntools: read, bash\n---\nDelegate body`);
+  writeFileSync(join(globalAgents, "delegate.md"), `---\nname: delegate\ndescription: Pi-backed delegate\ntools: read, bash\n---\nDelegate body`);
   writeFileSync(
-    join(packageAgents, "codex-exec.md"),
+    join(globalAgents, "codex-exec.md"),
     `---\nname: codex-exec\nrunner:\n  type: external-cli\n  command: codex\n---\nCodex body`,
   );
 
-  const agents = discoverAgents(cwd, agentDir, [packageAgents]);
-  assert.deepEqual(agents.map((a) => [a.name, a.source]), [["delegate", "package"]]);
+  const agents = discoverAgents(cwd, agentDir);
+  assert.deepEqual(agents.map((a) => [a.name, a.source]), [["delegate", "global"]]);
 });
 
 test("parseMarkdownAgent keeps comma descriptions as strings and checks external runner only in frontmatter", () => {
@@ -70,7 +70,7 @@ test("parseMarkdownAgent keeps comma descriptions as strings and checks external
   const external = parseMarkdownAgent(
     `---\nname: codex\nrunner:\n  type: external-cli\n  command: codex\n---\nBody`,
     "/tmp/codex.md",
-    "package",
+    "global",
   );
   assert.equal(external.externalCli, true);
 });

@@ -9,29 +9,9 @@
   "packages": [
     "npm:pi-claude-auth",
     "git:github.com/obra/superpowers",
-    {
-      "source": "npm:pi-subagents",
-      "extensions": []
-    },
     "npm:pi-web-access",
     "git:github.com/amosblomqvist/pi-observational-memory"
   ],
-  "observational-memory": {
-    "models": {
-      "observer": {
-        "provider": "anthropic",
-        "id": "claude-haiku-4-5",
-        "thinking": "low"
-      },
-      "consolidator": {
-        "provider": "anthropic",
-        "id": "claude-sonnet-4-6",
-        "thinking": "medium"
-      }
-    },
-    "passive": false,
-    "debugLog": false
-  },
   "subagents": {
     "defaultModel": "anthropic/claude-sonnet-4-6",
     "agentOverrides": {
@@ -55,5 +35,21 @@
         "model": "anthropic/claude-sonnet-4-6"
       }
     }
+  },
+  "observational-memory": {
+    "models": {
+      "observer": {
+        "provider": "anthropic",
+        "id": "claude-haiku-4-5",
+        "thinking": "low"
+      },
+      "consolidator": {
+        "provider": "anthropic",
+        "id": "claude-sonnet-4-6",
+        "thinking": "medium"
+      }
+    },
+    "passive": false,
+    "debugLog": false
   }
 }

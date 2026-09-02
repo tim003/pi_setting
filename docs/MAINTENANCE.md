@@ -6,12 +6,11 @@ Update, rollback, and troubleshooting notes for this Pi setup.
 
 ```bash
 pi update --extensions
-./scripts/patch-model-verification.sh
 ```
 
 Then run `/reload` inside Pi or restart Pi.
 
-`patch-model-verification.sh` is needed because `pi update --extensions` reinstalls `npm:pi-subagents` and removes the local alias-verification patch.
+`pi update --extensions` only touches installed packages. It never overwrites the local extensions, agents, or skills this repo installs, so nothing needs reapplying afterwards.
 
 ## Update Pi itself
 
@@ -32,7 +31,6 @@ From this repo:
 ./scripts/install-packages.sh
 cp settings/settings.example.json "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json"
 cp settings/web-search.example.json "${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/web-search.json"
-./scripts/patch-model-verification.sh
 ```
 
 Then run `/reload`.
@@ -88,27 +86,16 @@ echo "$CMUX_SOCKET_PATH"
 command -v cmux
 ```
 
-Then inspect `~/.pi/agent/settings.json` and confirm:
+Symptom: `subagents_list` returns nothing.
 
-```json
-{ "source": "npm:pi-subagents", "extensions": [] }
-```
-
-Run:
+The provider reads agent definitions from `~/.pi/agent/agents/`. Confirm they are present, and reinstall them from this repo if not:
 
 ```bash
-./scripts/activate-cmux-interactive-subagents.sh
+ls ~/.pi/agent/agents/
+./scripts/install-packages.sh
 ```
 
 Then `/reload` or restart Pi.
-
-Symptom: child completed but run reports model verification failure.
-
-Run:
-
-```bash
-./scripts/patch-model-verification.sh
-```
 
 ## cmux remote relay troubleshooting
 
@@ -152,17 +139,11 @@ Activation scripts write settings backups under:
 ~/.pi/agent/update-tracking/
 ```
 
-Rollback cmux subagent activation:
-
-```bash
-./scripts/rollback-cmux-interactive-subagents.sh ~/.pi/agent/update-tracking/settings-before-cmux-interactive-subagents-YYYYMMDDTHHMMSSZ.json
-```
-
-Manual rollback:
+Rollback the cmux subagent provider:
 
 ```bash
 rm -rf ~/.pi/agent/extensions/cmux-interactive-subagents
-# restore a saved settings.json if needed
+# restore a saved settings.json from ~/.pi/agent/update-tracking/ if needed
 # then run /reload inside Pi
 ```
 
@@ -179,8 +160,4 @@ Remove packages only when you no longer need them:
 pi remove git:github.com/amosblomqvist/pi-observational-memory
 ```
 
-Keep `npm:pi-subagents` installed if using the local cmux provider, because the local provider relies on its packaged Markdown agent definitions.
-
-## Historical notes
-
-Historical migration and implementation notes live under `docs/archive/`. They are retained for audit/debugging, but `INSTALL.md`, `docs/OPERATIONS.md`, and this file are the canonical current docs.
+The cmux subagent provider is self-contained: it reads its agent definitions from `~/.pi/agent/agents/` and needs no subagent package installed.

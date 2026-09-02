@@ -28,25 +28,21 @@ Configured in `settings/settings.example.json` and installed by `scripts/install
 
 - `npm:pi-claude-auth` — Anthropic auth via Claude Code OAuth credentials.
 - `git:github.com/obra/superpowers` — process extension plus Superpowers skills.
-- `npm:pi-subagents` — kept for packaged agent definitions, skills, and prompts; extension resources are disabled.
 - `npm:pi-web-access` — web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — memory extension; off by default.
 
 ## Complete extension inventory
 
-Package-provided extensions:
+Package-installed extensions are required parts of this setup. They load from `~/.pi/agent/npm` or `~/.pi/agent/git`, so their source is intentionally not copied into this repo's `extensions/` directory — see [why](../INSTALL.md#where-extensions-live-and-why).
 
 | Source | Extension status | Purpose |
 |---|---|---|
 | `npm:pi-claude-auth` | enabled | Seeds Anthropic auth from Claude Code credentials. |
 | `git:github.com/obra/superpowers` | enabled | Loads Superpowers skill behavior and commands. |
-| `npm:pi-web-access` | enabled | Provides web search/fetch tooling. |
+| `npm:pi-web-access` | enabled | Provides `web_search`, `fetch_content`, `source_check`, and `get_search_content` tooling. |
 | `git:github.com/amosblomqvist/pi-observational-memory` | enabled | Provides `/om` observational-memory commands and workers. |
-| `npm:pi-subagents` | installed, extension disabled | Extension disabled to avoid duplicate `subagent`; skills/prompts remain available. |
 
-Local extensions copied from this repo:
-
-Copied to `~/.pi/agent/extensions/` by `scripts/install-packages.sh`:
+Local extensions copied to `~/.pi/agent/extensions/` by `scripts/install-packages.sh`:
 
 | Extension | Purpose |
 |---|---|
@@ -56,18 +52,20 @@ Copied to `~/.pi/agent/extensions/` by `scripts/install-packages.sh`:
 | `cmux-interactive-subagents` | Active modified cmux interactive subagent provider. |
 | `host-safety-guard` | Blocks risky host paths; allows safe image/screenshot reads from `~/Desktop/pi-inbox`. |
 | `prompt-snippets` | Temporary prompt snippet toggles. |
-| `web-fetch` | Clean URL-to-Markdown fetch tool. |
+| `web-fetch` | Registers the `web_fetch` URL-to-Markdown tool. |
+
+Every extension tracked in this repo is installed by `scripts/install-packages.sh`. There are no unused or legacy extensions.
 
 ## Guard defaults
 
 Use the guard extensions in low-friction mode unless you deliberately want stricter prompts:
 
 - `host-safety-guard` defaults to `high-only`. It blocks high-risk credential/secret paths and auto-allows medium-risk Desktop prompts unless strict mode is enabled. Use `/host-guard` to inspect, `/host-guard high-only` for default behavior, or `/host-guard strict` for more prompts.
-- `bash-guard` prompts broadly in the main session, including routine git commands. If this becomes too noisy, run `/bash-guard` to disable interactive prompting for that session; catastrophic patterns remain hard-blocked.
+- `bash-guard` defaults to high-only via `PI_BASH_GUARD_LEVEL`. Medium-risk commands, including routine git commands, are auto-allowed; only high-risk commands prompt. Set `PI_BASH_GUARD_LEVEL=strict` to prompt on medium-risk commands too. Run `/bash-guard` to disable interactive prompting for a session; catastrophic patterns remain hard-blocked in all modes.
 
 ## Complete skills and prompts inventory
 
-Package-provided skills:
+Package-installed skills:
 
 - From `git:github.com/obra/superpowers`:
   - `using-superpowers`
@@ -84,18 +82,17 @@ Package-provided skills:
   - `verification-before-completion`
   - `finishing-a-development-branch`
   - `writing-skills`
-- From `npm:pi-subagents`:
-  - `pi-subagents`
-  - `council-mode`
 
-Package-provided prompts from `npm:pi-subagents`:
+Package-installed web tools from `npm:pi-web-access`:
 
-- `parallel-cleanup`
-- `parallel-research`
-- `parallel-review`
-- `gather-context-and-clarify`
-- `council`
-- `review-loop`
+- `web_search`
+- `fetch_content`
+- `source_check`
+- `get_search_content`
+
+Local web/fetch tool from this repo:
+
+- `web_fetch`
 
 Local skills copied to `~/.pi/agent/skills/`:
 
@@ -116,14 +113,16 @@ Requirements:
 
 - Start Pi from inside cmux when using interactive subagents.
 - `CMUX_SOCKET_PATH` must be set.
-- `npm:pi-subagents` must keep `"extensions": []` in settings to avoid duplicate `subagent` tools.
+- `~/.pi/agent/agents/` must contain the six agent definitions; without them `subagents_list` is empty.
 - Keep `pi-claude-auth` installed; the local child launcher explicitly loads it so Anthropic child Pi processes inherit Claude Code auth while other extensions remain isolated.
 
-Repair/activation helper:
+Repair by re-running the installer, which recopies the extension and agent definitions:
 
 ```bash
-./scripts/activate-cmux-interactive-subagents.sh
+./scripts/install-packages.sh
 ```
+
+Available agents (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) come from `~/.pi/agent/agents/`. Add a project-local override in `<project>/.pi/agents/`, and set model/thinking per agent under `subagents.agentOverrides` in `settings.json`.
 
 Smoke tests inside Pi:
 

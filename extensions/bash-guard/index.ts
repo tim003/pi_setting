@@ -422,6 +422,15 @@ const MAIN_DISABLED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = HEADLE
 //   sanitizeStatusText collapses runs of ASCII spaces via / +/g.
 const BASH_GUARD_STATUS_KEY = " bash-guard";
 
+// Minimum severity that triggers an interactive prompt in the main session.
+// Default is "high": medium-risk commands are auto-allowed and only high-risk
+// commands prompt for approval. Set PI_BASH_GUARD_LEVEL=strict to restore the
+// previous behaviour of prompting on medium-risk commands too.
+const _promptOnMedium = String(process.env.PI_BASH_GUARD_LEVEL ?? "").trim().toLowerCase() === "strict";
+function shouldPrompt(risk: Risk): boolean {
+	return risk.severity === "high" || _promptOnMedium;
+}
+
 export default function (pi: ExtensionAPI) {
 	if (_isSubagent) {
 		// Subagent mode: hard-block catastrophic operations, no prompting.
@@ -521,6 +530,9 @@ export default function (pi: ExtensionAPI) {
 
 		const risk = analyzeBashCommand(command);
 		if (!risk) return;
+
+		// High-only by default: auto-allow medium-risk commands without prompting.
+		if (!shouldPrompt(risk)) return;
 
 		const now = Date.now();
 		const lastAbort = recentlyAborted.get(command);

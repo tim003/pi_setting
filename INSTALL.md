@@ -6,12 +6,11 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
 
 ## What you will end up with
 
-- Pi running directly on macOS, not in the old Docker container runtime.
-- Pi packages and their resources:
+- Pi running directly on macOS.
+- Pi package-installed extensions and resources configured as first-class parts of this setup:
   - `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth
   - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills
-  - `npm:pi-subagents` — skills/prompts available; extension resources disabled
-  - `npm:pi-web-access` — enabled web access extension/tools
+  - `npm:pi-web-access` — enabled extension providing web access tools
   - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session
 - Local extensions copied into `~/.pi/agent/extensions/`:
   - `ask-user-question`
@@ -22,9 +21,25 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
   - `prompt-snippets`
   - `web-fetch`
 - Package skills/prompts:
-  - Superpowers skills from `git:github.com/obra/superpowers`
-  - `pi-subagents` and `council-mode` skills from `npm:pi-subagents`
-  - `pi-subagents` prompt templates such as `parallel-review`, `parallel-research`, and `council`
+  - Superpowers skills from `git:github.com/obra/superpowers`:
+    - `using-superpowers`
+    - `brainstorming`
+    - `systematic-debugging`
+    - `test-driven-development`
+    - `using-git-worktrees`
+    - `writing-plans`
+    - `executing-plans`
+    - `dispatching-parallel-agents`
+    - `subagent-driven-development`
+    - `requesting-code-review`
+    - `receiving-code-review`
+    - `verification-before-completion`
+    - `finishing-a-development-branch`
+    - `writing-skills`
+  - `pi-web-access` tools: `web_search`, `fetch_content`, `source_check`, `get_search_content`
+  - `web_fetch` comes from the local `web-fetch` extension in this repo, not from `pi-web-access`
+- Subagent definitions copied into `~/.pi/agent/agents/`, used by the local cmux provider:
+  - `delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`
 - Local skills copied into `~/.pi/agent/skills/`:
   - `analyze-sessions`
   - `pdf-reader`
@@ -32,11 +47,51 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
   - `youtube-transcript`
 - Optional cmux remote access from iPhone/iPad over Tailscale.
 
+## Where extensions live, and why
+
+This setup has **two** kinds of extensions. Both are required. They are installed in different ways, and that difference is deliberate.
+
+### 1. Package-installed extensions
+
+`pi-claude-auth`, `superpowers`, `pi-web-access`, and `observational-memory`.
+
+These are installed with `pi install ...`, which places them under `~/.pi/agent/npm/` or `~/.pi/agent/git/`. They are activated by the `packages` array in `settings.json`. Step 5 does both: it runs the installer and copies the settings that enable them.
+
+They are **not** copied into this repo's `extensions/` folder. That is not an oversight, and it does not make them optional. The reasons:
+
+- **Pi already loads them from `~/.pi/agent`.** Everything in this repo's `extensions/` gets copied into `~/.pi/agent/extensions/` by the installer, where Pi auto-discovers it. A package copied there too would load twice and register its tools and commands twice.
+- **They are third-party code with their own upstream repos and release cadence.** `pi update --extensions` keeps them current. A copy committed here would be a silent fork that drifts out of date and would have to be re-synced by hand after every upstream release.
+- **Their trees contain build output, lockfiles, and vendored dependencies** that are noise in a settings repo and make review of *your own* configuration harder.
+- **Licensing and attribution stay clean** when the code is fetched from its source rather than re-published here.
+
+So the correct way to capture them in this repo is what this guide does: name them, pin their install commands, record their settings, and document every skill, prompt, and tool they contribute. The install is reproducible without copying their source.
+
+### 2. Local extensions tracked in this repo
+
+`ask-user-question`, `bash-guard`, `browser`, `cmux-interactive-subagents`, `host-safety-guard`, `prompt-snippets`, and `web-fetch`.
+
+These live in `extensions/` because they have no upstream package to install from. They are written or modified for this setup, so this repo is their source of truth, and `scripts/install-packages.sh` copies them into `~/.pi/agent/extensions/`.
+
+`cmux-interactive-subagents` is the important one. It is the sole provider of the `subagent`, `subagent_message`, and `subagents_list` tools, and it runs each child in a real cmux terminal pane.
+
+### 3. Subagent definitions in `agents/`
+
+`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, and `worker`.
+
+These are plain Markdown files with YAML frontmatter that define each subagent's role, tools, and thinking level. The installer copies them to `~/.pi/agent/agents/`, which the cmux provider reads directly.
+
+Agent definitions resolve in precedence order, so you can override any of them without editing this repo:
+
+1. `~/.pi/agent/agents/` — global, installed from here
+2. `<project>/.pi/agents/` — per-project, wins over global
+
+Model and thinking overrides for these agents live separately, under `subagents.agentOverrides` in `settings.json`.
+
 ## Security and scope notes
 
-Pi packages and extensions run with your user permissions and can execute arbitrary code. Review this repo before installing, especially the `extensions/` directory and the third-party package sources.
+Pi packages and extensions run with your user permissions and can execute arbitrary code. Review this repo before installing, especially the local `extensions/` directory, and review third-party packages at their upstream sources.
 
-Never commit or share these from `~/.pi/agent`:
+Never copy runtime state or credential-bearing files out of `~/.pi/agent` into this or any other repo. Never commit or share:
 
 - `auth.json`
 - `models-store.json`
@@ -109,7 +164,7 @@ cd ~/pi_setting
 # git clone https://github.com/tim003/pi_setting.git ~/pi_setting
 ```
 
-## 5. Install package sources, local extensions, and local skills
+## 5. Install package sources, local extensions, agents, and skills
 
 Run the bundled installer:
 
@@ -117,7 +172,7 @@ Run the bundled installer:
 ./scripts/install-packages.sh
 ```
 
-This installs third-party Pi packages, copies local extensions and skills into `~/.pi/agent`, installs extension dependencies, and creates `~/Desktop/pi-inbox` for safe image/screenshot reads.
+This installs third-party Pi packages, copies local extensions, subagent definitions, and skills into `~/.pi/agent`, installs extension dependencies, and creates `~/Desktop/pi-inbox` for safe image/screenshot reads.
 
 Then copy the example settings, or merge them if you already have Pi settings:
 
@@ -128,28 +183,14 @@ cp settings/settings.example.json "$PI_DIR/settings.json"
 cp settings/web-search.example.json "$PI_DIR/web-search.json"
 ```
 
-Important: `npm:pi-subagents` should remain installed, but its extension resources should be disabled in settings:
-
-```json
-{
-  "source": "npm:pi-subagents",
-  "extensions": []
-}
-```
-
-That avoids duplicate `subagent` tool providers while the local `cmux-interactive-subagents` extension is active.
-
-## 6. Apply the pi-subagents alias verification patch
-
-Run this after installing packages and after any future `pi update --extensions`:
+Verify the installed agent definitions:
 
 ```bash
-./scripts/patch-model-verification.sh
+ls ~/.pi/agent/agents/
+# delegate.md  oracle.md  researcher.md  reviewer.md  scout.md  worker.md
 ```
 
-Why: some providers return dated model snapshot ids even when Pi launches an alias such as `anthropic/claude-sonnet-4-6`. Without the patch, `pi-subagents` can mark a completed child run as failed only because the returned snapshot id differs from the alias.
-
-## 7. Authenticate locally
+## 6. Authenticate locally
 
 ### Claude / Anthropic through Claude Code
 
@@ -189,7 +230,7 @@ Hi <your-github-user>! You've successfully authenticated, but GitHub does not pr
 
 Pi's `openai-codex` provider login and the `codex` CLI login are separate. If you want CLI-backed Codex subagents, see [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md#auth-checks).
 
-## 8. Start Pi and reload resources
+## 7. Start Pi and reload resources
 
 Start Pi from a cmux terminal:
 
@@ -218,17 +259,11 @@ Inside Pi, ask for a simple command or use the tools normally. You should see lo
 This setup is meant to be usable without excessive confirmations:
 
 - `host-safety-guard` defaults to `high-only`. Keep it that way unless you want stricter Desktop/path prompts. To force strict mode, start Pi with `PI_HOST_GUARD_LEVEL=strict`; to return to the default, unset that variable or run `/host-guard high-only` inside Pi.
-- `bash-guard` prompts on many potentially risky main-session commands, including routine git commands. If that is too intrusive for your workflow, run `/bash-guard` inside Pi to disable interactive prompting for the current session. Catastrophic commands still remain hard-blocked.
+- `bash-guard` also defaults to high-only. Medium-risk commands, including routine git commands, are auto-allowed, and only high-risk commands prompt. To restore prompting on medium-risk commands, start Pi with `PI_BASH_GUARD_LEVEL=strict`. To silence interactive prompting entirely for one session, run `/bash-guard` inside Pi. Catastrophic commands stay hard-blocked in every mode.
 
-## 9. Activate and verify modified cmux interactive subagents
+## 8. Verify modified cmux interactive subagents
 
-The base installer already copies `extensions/cmux-interactive-subagents/`. To actively enforce the correct settings and dependency install, run this from the repo while Pi/cmux is available:
-
-```bash
-./scripts/activate-cmux-interactive-subagents.sh
-```
-
-Requirements:
+Step 5 already installed `extensions/cmux-interactive-subagents/` and the agent definitions, so there is nothing extra to activate. Confirm the runtime requirements:
 
 - `cmux` is on `PATH`.
 - `CMUX_SOCKET_PATH` is set.
@@ -257,11 +292,11 @@ Expected: a cmux child pane appears, completes, and can be resumed by name.
 If this fails:
 
 1. Confirm `echo "$CMUX_SOCKET_PATH"` is non-empty in the shell that launched Pi.
-2. Confirm `npm:pi-subagents` has `"extensions": []` in `~/.pi/agent/settings.json`.
+2. Confirm `ls ~/.pi/agent/agents/` lists the six agent definitions; `subagents_list` is empty without them.
 3. Run `/reload` or restart Pi.
 4. See [`docs/OPERATIONS.md`](docs/OPERATIONS.md#cmux-interactive-subagents) and [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md#cmux-subagent-troubleshooting).
 
-## 10. Observational memory
+## 9. Observational memory
 
 Observational memory is installed but gated off by default.
 
@@ -281,7 +316,7 @@ Current config in `settings/settings.example.json` uses:
 - consolidator: `anthropic/claude-sonnet-4-6`, medium thinking
 - passive mode: off
 
-## 11. Tailscale and shared VPS access
+## 10. Tailscale and shared VPS access
 
 If you already have VPS access through Tailscale, verify it before wiring it into any Pi workflow.
 
@@ -292,7 +327,7 @@ tailscale status
 tailscale ip -4
 ```
 
-Find the VPS tailnet IP in `tailscale status`. In Tim's notes, the VPS was `srv962189` at `100.84.83.90`, but you should verify the current value in your own tailnet.
+Find the VPS tailnet IP and hostname in `tailscale status`, and use those values. Do not hardcode a host or address from someone else's notes — tailnet IPs change when a machine is re-registered.
 
 Test SSH with your own VPS username/key:
 
@@ -309,7 +344,7 @@ Operational caution for the shared VPS:
 - Check server-side logs/config before repeated client-side testing.
 - Do not run broad commands such as `docker compose down` from a shared directory.
 
-## 12. Optional: cmux remote access from iOS over Tailscale
+## 11. Optional: cmux remote access from iOS over Tailscale
 
 This section mirrors Tim's setup using the third-party **Cmux Remote** app and relay. Treat it as optional and security-sensitive.
 
@@ -325,7 +360,7 @@ CMUX_SOCKET_MODE=allowAll
 
 That lets processes outside cmux connect to cmux's socket. On a single-user Mac this may be acceptable; on a shared or high-risk machine, think carefully before enabling it.
 
-### 12.1 Confirm Tailscale on Mac and iPhone
+### 11.1 Confirm Tailscale on Mac and iPhone
 
 - Install Tailscale on macOS and sign in.
 - Install Tailscale on iOS and sign in to the same tailnet or an account with access.
@@ -339,7 +374,7 @@ tailscale ip -4
 
 Use this IP in the relay config below.
 
-### 12.2 Build and install the relay
+### 11.2 Build and install the relay
 
 cmux must be running.
 
@@ -351,7 +386,7 @@ cd ~/cmux-remote
 
 This installs the relay under `~/.cmuxremote/` and creates a LaunchAgent named `com.genie.cmuxremote`.
 
-### 12.3 Bind the relay to the tailnet IP only
+### 11.3 Bind the relay to the tailnet IP only
 
 Do not leave the relay on `0.0.0.0` unless you intentionally want LAN exposure.
 
@@ -374,7 +409,7 @@ lsof -nP -iTCP:4399 -sTCP:LISTEN
 
 Expected: the listener is bound to `<mac-tailnet-ip>:4399`, not `*:4399`.
 
-### 12.4 Open cmux's socket to the relay
+### 11.4 Open cmux's socket to the relay
 
 One-time/manual for the current login session:
 
@@ -429,7 +464,7 @@ allowAll
 
 If cmux starts before this LaunchAgent after a reboot, quit and relaunch cmux once.
 
-### 12.5 Pair iOS
+### 11.5 Pair iOS
 
 1. Turn on Tailscale on iPhone/iPad.
 2. Open the Cmux Remote iOS app.
@@ -438,7 +473,7 @@ If cmux starts before this LaunchAgent after a reboot, quit and relaunch cmux on
 
 Pairing is per device. Revoke a lost device from the relay menu bar.
 
-### 12.6 Verify and operate the relay
+### 11.6 Verify and operate the relay
 
 ```bash
 lsof -nP -iTCP:4399 -sTCP:LISTEN
@@ -462,13 +497,12 @@ Common symptoms:
 - `attached` / `detached` loop: socket mode is wrong or cmux started before `CMUX_SOCKET_MODE=allowAll` was set. Check `launchctl getenv CMUX_SOCKET_MODE`, relaunch cmux, then restart the relay.
 - Relay listens on `*:4399`: fix `~/.cmuxremote/relay.json` to bind to the tailnet IP.
 
-## 13. Update and rollback
+## 12. Update and rollback
 
 Update Pi packages:
 
 ```bash
 pi update --extensions
-./scripts/patch-model-verification.sh
 ```
 
 Then run `/reload` or restart Pi.
@@ -480,21 +514,18 @@ pi update --self
 pi --version
 ```
 
-Rollback local extensions/skills by removing or renaming their folders under `~/.pi/agent/extensions/` or `~/.pi/agent/skills/`, then run `/reload`.
+Rollback local extensions, agents, or skills by removing or renaming their folders under `~/.pi/agent/extensions/`, `~/.pi/agent/agents/`, or `~/.pi/agent/skills/`, then run `/reload`. Re-running `./scripts/install-packages.sh` restores them from this repo.
 
-For cmux subagents specifically:
+Before changing settings, snapshot them so you can restore by hand:
 
 ```bash
-./scripts/rollback-cmux-interactive-subagents.sh <settings-backup-json>
+PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+mkdir -p "$PI_DIR/update-tracking"
+cp "$PI_DIR/settings.json" \
+   "$PI_DIR/update-tracking/settings-$(date -u +%Y%m%dT%H%M%SZ).json"
 ```
 
-Activation scripts write settings backups under:
-
-```text
-~/.pi/agent/update-tracking/
-```
-
-## 14. Final checklist
+## 13. Final checklist
 
 Run these before calling the setup complete:
 
@@ -511,7 +542,7 @@ From a cmux terminal:
 
 ```bash
 echo "$CMUX_SOCKET_PATH"
-./scripts/patch-model-verification.sh
+ls ~/.pi/agent/agents/
 ```
 
 Inside Pi:
@@ -521,7 +552,7 @@ Inside Pi:
 /om:status
 ```
 
-Then verify one cmux subagent launch and resume as described in section 9.
+Then verify one cmux subagent launch and resume as described in section 8.
 
 For iOS remote access, also verify:
 

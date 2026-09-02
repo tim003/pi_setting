@@ -10,14 +10,14 @@ PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 
 pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
-# Kept for packaged Markdown agent definitions/reference. Disable its extension
-# resources in settings.example.json because the local cmux provider registers
-# the active `subagent` tool on host Pi.
-pi install npm:pi-subagents
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory
 
-mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$HOME/Desktop/pi-inbox"
+mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$PI_DIR/agents" "$HOME/Desktop/pi-inbox"
+
+# Subagent definitions for the local cmux provider. They live in the global
+# agent dir, which the provider reads directly, so no extra package is needed.
+cp "$REPO_DIR/agents/"*.md "$PI_DIR/agents/"
 
 for extension in ask-user-question host-safety-guard prompt-snippets web-fetch bash-guard browser; do
   rm -rf "$PI_DIR/extensions/$extension"
@@ -39,7 +39,7 @@ for extension in ask-user-question host-safety-guard web-fetch bash-guard browse
   )
 done
 
-# Install the local cmux subagent provider as the active host-Pi provider.
+# Install the local cmux subagent provider, which registers the `subagent` tool.
 # Its launcher explicitly loads pi-claude-auth in child Pi processes before the
 # child-helper extension so Anthropic/Claude Code OAuth works even with
 # --no-extensions isolation.
@@ -58,7 +58,7 @@ done
 
 cat <<'EOF'
 
-Installed package sources plus local safety/browser/fetch/question/snippet extensions, active cmux-interactive-subagents, selected skills, and ensured ~/Desktop/pi-inbox exists.
-Copy settings/settings.example.json to your Pi settings or merge its package filters manually; npm:pi-subagents should remain installed but extension-disabled to avoid a duplicate subagent tool.
+Installed package sources, local extensions, subagent definitions, and selected skills, and ensured ~/Desktop/pi-inbox exists.
+Copy settings/settings.example.json to your Pi settings, or merge its packages array manually.
 Run /reload inside Pi to load changed extension code.
 EOF

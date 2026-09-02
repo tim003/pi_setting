@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 
-export type AgentSource = "package" | "global" | "project";
+export type AgentSource = "global" | "project";
 
 export type AgentDefinition = {
   name: string;
@@ -109,11 +109,8 @@ function readAgentsFromDir(dir: string, source: AgentSource): AgentDefinition[] 
   return agents;
 }
 
-export function discoverAgents(cwd: string, agentDir: string, packageAgentDirs: string[] = []): AgentDefinition[] {
+export function discoverAgents(cwd: string, agentDir: string): AgentDefinition[] {
   const byName = new Map<string, AgentDefinition>();
-  for (const dir of packageAgentDirs) {
-    for (const agent of readAgentsFromDir(dir, "package")) byName.set(agent.name, agent);
-  }
   for (const agent of readAgentsFromDir(join(agentDir, "agents"), "global")) byName.set(agent.name, agent);
   for (const agent of readAgentsFromDir(join(cwd, ".pi", "agents"), "project")) byName.set(agent.name, agent);
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
