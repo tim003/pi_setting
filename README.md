@@ -62,6 +62,7 @@ Required parts of the setup, installed with `pi install ...` into `~/.pi/agent/n
 - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills.
 - `npm:pi-web-access` — enabled web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session.
+- `npm:pi-chrome` — drives the real signed-in Chrome profile via `chrome_*` tools. Needs a one-time manual Chrome step and per-session `/chrome authorize`.
 
 ### Subagent definitions
 
@@ -112,7 +113,10 @@ pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory
+pi install npm:pi-chrome
 ```
+
+`pi-chrome` needs a manual step that no script can do for you — see [`docs/OPERATIONS.md`](docs/OPERATIONS.md#chrome-profile-control-pi-chrome).
 
 The active `subagent` provider is the local `extensions/cmux-interactive-subagents/` extension. It is self-contained and needs no subagent package.
 

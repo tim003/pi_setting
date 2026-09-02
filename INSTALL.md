@@ -12,6 +12,7 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
   - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills
   - `npm:pi-web-access` — enabled extension providing web access tools
   - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session
+  - `npm:pi-chrome` — controls the real signed-in Chrome profile; needs a one-time manual Chrome step and per-session authorization
 - Local extensions copied into `~/.pi/agent/extensions/`:
   - `ask-user-question`
   - `bash-guard`
@@ -54,7 +55,9 @@ This setup has **two** kinds of extensions. Both are required. They are installe
 
 ### 1. Package-installed extensions
 
-`pi-claude-auth`, `superpowers`, `pi-web-access`, and `observational-memory`.
+`pi-claude-auth`, `superpowers`, `pi-web-access`, `observational-memory`, and `pi-chrome`.
+
+`pi-chrome` is the one package `scripts/install-packages.sh` cannot fully set up: Chrome requires a human to load the bundled extension via **Load unpacked**. Run `/chrome onboard` afterwards and follow [`docs/OPERATIONS.md`](docs/OPERATIONS.md#chrome-profile-control-pi-chrome). Until that is done, the `chrome_*` tools are present but cannot connect.
 
 These are installed with `pi install ...`, which places them under `~/.pi/agent/npm/` or `~/.pi/agent/git/`. They are activated by the `packages` array in `settings.json`. Step 5 does both: it runs the installer and copies the settings that enable them.
 

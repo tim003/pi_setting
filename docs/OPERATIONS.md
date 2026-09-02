@@ -30,6 +30,7 @@ Configured in `settings/settings.example.json` and installed by `scripts/install
 - `git:github.com/obra/superpowers` — process extension plus Superpowers skills.
 - `npm:pi-web-access` — web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — memory extension; off by default.
+- `npm:pi-chrome` — Chrome profile control; locked until authorized per session.
 
 ## Complete extension inventory
 
@@ -41,6 +42,7 @@ Package-installed extensions are required parts of this setup. They load from `~
 | `git:github.com/obra/superpowers` | enabled | Loads Superpowers skill behavior and commands. |
 | `npm:pi-web-access` | enabled | Provides `web_search`, `fetch_content`, `source_check`, and `get_search_content` tooling. |
 | `git:github.com/amosblomqvist/pi-observational-memory` | enabled | Provides `/om` observational-memory commands and workers. |
+| `npm:pi-chrome` | enabled, but locked | Provides `chrome_*` tools driving the real Chrome profile. Inert until `/chrome authorize`. |
 
 Local extensions copied to `~/.pi/agent/extensions/` by `scripts/install-packages.sh`:
 
@@ -171,7 +173,9 @@ Default models in this setup:
 
 Use `web_fetch` for clean Markdown extraction from simple public URLs.
 
-Use `/browser on` plus browser tools when you need live frontend state: DOM, network, console, local storage, forms, screenshots, or authenticated browser sessions.
+Use `/browser on` plus browser tools when you need live frontend state: DOM, network, console, local storage, forms, screenshots, or authenticated browser sessions. This drives a **separate Playwright Chromium** with its own empty profile, so you are logged in nowhere.
+
+Use `pi-chrome` instead when the task depends on **being already signed in** — it drives your real Chrome profile. The two coexist: `browser_*` tools are Playwright, `chrome_*` tools are your real Chrome.
 
 Browser dependencies are installed by `scripts/install-packages.sh`. If Chromium is missing:
 
@@ -179,6 +183,47 @@ Browser dependencies are installed by `scripts/install-packages.sh`. If Chromium
 cd ~/.pi/agent/extensions/browser
 npx playwright-core install chromium
 ```
+
+## Chrome profile control (pi-chrome)
+
+`npm:pi-chrome` lets Pi use the Chrome profile you are already signed into, through a small Chrome extension bridged over loopback (`127.0.0.1:17318`). Use it for work that would otherwise require logging in again, or that depends on your existing session state.
+
+### One-time setup
+
+`pi install npm:pi-chrome` cannot finish the job — Chrome requires a human to load the extension:
+
+```
+/chrome onboard
+```
+
+That opens `chrome://extensions` and copies the bundled path. Then, in Chrome: enable **Developer mode** → **Load unpacked** → `Cmd+Shift+G` → paste → Enter. Back in Pi:
+
+```
+/reload
+/chrome doctor      # expect: ✓ Chrome is connected
+```
+
+### Every session
+
+Control is locked by default and must be authorized per session:
+
+```
+/chrome authorize            # 15 minutes
+/chrome authorize 30m        # custom duration
+/chrome authorize indefinite
+/chrome revoke               # lock again
+/chrome status
+```
+
+`/chrome background on` (the default) keeps it from stealing focus; `off` gives foreground watch mode.
+
+### Notes
+
+- The Chrome extension has broad tab and scripting permissions in your real profile. That is what makes it useful and what makes authorization deliberate.
+- After `pi update`, `/chrome doctor` may report the loaded extension is older than the package — reload it from `chrome://extensions`.
+- Screenshots land in `.pi/chrome-screenshots/` inside the project.
+- It does not cover native Chrome/OS surfaces: print and save dialogs, permission bubbles, password-manager prompts, passkeys and biometrics, cross-origin iframe DOM, or CAPTCHA challenges. On strict-CSP pages, fall back to screenshots plus coordinate input.
+- `/chrome revoke` closes only the calling session's automation target; your own tabs and windows are left alone.
 
 ## Prompt snippets
 

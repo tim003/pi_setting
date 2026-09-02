@@ -12,6 +12,9 @@ pi install npm:pi-claude-auth
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory
+# Drives the real signed-in Chrome profile. Needs a manual step after install:
+# /chrome onboard, then Load unpacked in chrome://extensions. See docs/OPERATIONS.md.
+pi install npm:pi-chrome
 
 mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$PI_DIR/agents" "$HOME/Desktop/pi-inbox"
 
