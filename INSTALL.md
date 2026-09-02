@@ -271,6 +271,8 @@ Inside Pi, ask for a simple command or use the tools normally. You should see lo
 This setup is meant to be usable without excessive confirmations:
 
 - `host-safety-guard` defaults to `high-only`. High-risk credential paths prompt for approval rather than being refused outright, and the prompt warns you when approving would record file contents or command output into the session transcript. With no UI available it fails closed and refuses. Keep it that way unless you want stricter Desktop/path prompts. To force strict mode, start Pi with `PI_HOST_GUARD_LEVEL=strict`; to return to the default, unset that variable or run `/host-guard high-only` inside Pi.
+
+  To stop the prompts while diagnosing SSH or cloud config, run `/host-guard off` (or start with `pi --host-guard-disabled` / `PI_HOST_GUARD_LEVEL=off`). This releases non-secret config files such as `~/.ssh/config`, `known_hosts`, and `*.pub`, but a secrets floor still prompts for private keys, keychains, `~/.secrets`, `~/.aws/credentials`, `~/.kube/config`, and 1Password data — a leaked credential cannot be unwritten from the session transcript. A red `⚠ HOST GUARD OFF` badge marks the status line while it is off. See [docs/OPERATIONS.md](docs/OPERATIONS.md#guard-defaults) for the full table.
 - `bash-guard` also defaults to high-only. Medium-risk commands, including routine git commands, are auto-allowed, and only high-risk commands prompt. To restore prompting on medium-risk commands, start Pi with `PI_BASH_GUARD_LEVEL=strict`. To silence interactive prompting entirely for one session, run `/bash-guard` inside Pi. Catastrophic commands stay hard-blocked in every mode.
 
 ## 8. Verify modified cmux interactive subagents

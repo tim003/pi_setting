@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-export type GuardMode = "high-only" | "strict";
+export type GuardMode = "high-only" | "strict" | "off";
 export type RiskLevel = "none" | "medium" | "high";
 
 type Decision =
@@ -29,7 +29,37 @@ function extensionOf(path: string): string {
 
 export function resolveMode(env: Record<string, string | undefined> = process.env): GuardMode {
   const raw = String(env.PI_HOST_GUARD_LEVEL ?? "").trim().toLowerCase();
-  return raw === "strict" ? "strict" : "high-only";
+  if (raw === "strict") return "strict";
+  if (raw === "off" || raw === "disabled") return "off";
+  return "high-only";
+}
+
+/**
+ * The floor for `off` mode, expressed as what may be *released* rather than what is
+ * withheld: an allowlist fails safe when an unfamiliar file appears in a protected
+ * directory, whereas a blocklist silently lets it through.
+ *
+ * Everything here is non-secret by design — host aliases, agent settings, public
+ * keys. Note `.aws/config` is releasable while `.kube/config` is not: the former
+ * holds region and role names, the latter embeds bearer tokens and client certs.
+ */
+const OFF_MODE_RELEASABLE = [
+  /^\.ssh\/config$/,
+  /^\.ssh\/config\.d\/[^/]+$/,
+  /^\.ssh\/known_hosts(\.old)?$/,
+  /^\.ssh\/authorized_keys$/,
+  /^\.ssh\/[^/]+\.pub$/,
+  /^\.aws\/config$/,
+  /^\.gnupg\/(gpg\.conf|gpg-agent\.conf|dirmngr\.conf)$/,
+];
+
+/** True when `target` is a known-harmless file that `off` mode may stop prompting for. */
+export function isReleasableInOffMode(target: string, home = homedir()): boolean {
+  if (!isWithin(target, home)) return false;
+  const relative = target.slice(home.length + 1).split(sep).join("/");
+  // A secret-looking name overrides the allowlist: ~/.ssh/private-key.pub stays guarded.
+  if (SECRET_NAME_RE.test(relative)) return false;
+  return OFF_MODE_RELEASABLE.some((pattern) => pattern.test(relative));
 }
 
 /** Medium-risk findings prompt only in strict mode; high-risk always prompts. */
@@ -83,6 +113,9 @@ export function analyzePathAccess(
 
   for (const dir of protectedDirs) {
     if (isWithin(target, dir)) {
+      if (mode === "off" && isReleasableInOffMode(target, home)) {
+        return { action: "allow", risk: "none", reason: `Released in off mode: ${path}` };
+      }
       return {
         action: "confirm",
         risk: "high",
@@ -130,6 +163,18 @@ function shellMentionsProtectedPath(command: string, home: string, mode: GuardMo
     "~/.secrets", `${home}/.secrets`,
   ];
   if (protectedPatterns.some((pattern) => compact.includes(pattern))) {
+    // In off mode a command is released only when every protected path it names is
+    // releasable. `cat ~/.ssh/config ~/.ssh/id_rsa` therefore still prompts.
+    if (mode === "off") {
+      const touching = compact
+        .split(/\s+/)
+        .map((token) => token.replace(/^["']|["']$/g, ""))
+        .filter((token) => protectedPatterns.some((pattern) => token.includes(pattern)));
+      const allReleasable =
+        touching.length > 0 &&
+        touching.every((token) => isReleasableInOffMode(normalizePath(token, home), home));
+      if (allReleasable) return null;
+    }
     // Command output is captured in the transcript, so approval always has a persistent cost.
     return {
       action: "confirm",
@@ -184,22 +229,61 @@ async function askForConfirmation(ctx: any, reason: string, recordsContents = fa
   return false;
 }
 
+// Leading space sorts this ahead of letter-keyed extension statuses, so the warning
+// survives Pi's right-truncation of the shared status line. Same trick as bash-guard.
+const HOST_GUARD_STATUS_KEY = " host-guard";
+
 export default function (pi: ExtensionAPI) {
   let mode: GuardMode = resolveMode();
   const approvals = new Set<string>();
 
+  /** Off mode is easy to forget you enabled, so it gets a persistent badge. */
+  const showModeBadge = (ctx: any) => {
+    if (mode !== "off") {
+      ctx.ui?.setStatus?.(HOST_GUARD_STATUS_KEY, undefined);
+      return;
+    }
+    const theme = ctx.ui?.theme;
+    if (!theme || typeof ctx.ui?.setStatus !== "function") return;
+    ctx.ui.setStatus(
+      HOST_GUARD_STATUS_KEY,
+      theme.bg("toolErrorBg", theme.bold(theme.fg("error", " ⚠ HOST GUARD OFF "))),
+    );
+  };
+
+  pi.registerFlag("host-guard-disabled", {
+    description:
+      "Start the session with host-safety-guard off (secrets floor still applies to key material).",
+    type: "boolean",
+  });
+
+  pi.on("session_start", async (event: any, ctx: any) => {
+    if (event?.reason === "startup" && pi.getFlag("--host-guard-disabled") === true) mode = "off";
+    showModeBadge(ctx);
+  });
+
   pi.registerCommand("host-guard", {
-    description: "Show or set host-safety-guard prompting level: /host-guard [strict|high-only]",
+    description:
+      "Show or set host-safety-guard prompting level: /host-guard [strict|high-only|off]",
     handler: async (args: string, ctx: any) => {
       const next = String(args ?? "").trim().toLowerCase();
-      if (next === "strict" || next === "high-only") {
-        mode = next;
+      const requested = next === "disabled" ? "off" : next;
+      if (requested === "strict" || requested === "high-only" || requested === "off") {
+        mode = requested;
         approvals.clear();
-        ctx.ui?.notify?.(`host-safety-guard mode: ${mode} (remembered approvals cleared)`, "info");
+        showModeBadge(ctx);
+        if (mode === "off") {
+          ctx.ui?.notify?.(
+            "host-safety-guard OFF for this session. Private keys, keychains, ~/.secrets and 1Password data still prompt. Run /host-guard high-only to restore.",
+            "warning",
+          );
+        } else {
+          ctx.ui?.notify?.(`host-safety-guard mode: ${mode} (remembered approvals cleared)`, "info");
+        }
         return;
       }
       ctx.ui?.notify?.(
-        `host-safety-guard mode: ${mode}. Use /host-guard strict or /host-guard high-only.`,
+        `host-safety-guard mode: ${mode}. Use /host-guard strict, high-only, or off.`,
         "info",
       );
     },

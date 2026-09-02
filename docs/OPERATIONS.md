@@ -65,6 +65,18 @@ Use the guard extensions in low-friction mode unless you deliberately want stric
 
 - `host-safety-guard` defaults to `high-only`. It **prompts** for high-risk credential/secret paths and auto-allows medium-risk Desktop access unless strict mode is enabled. Use `/host-guard` to inspect, `/host-guard high-only` for default behavior, or `/host-guard strict` for more prompts.
 
+  `/host-guard off` (or `pi --host-guard-disabled`, or `PI_HOST_GUARD_LEVEL=off`) stops the routine prompting when you are diagnosing SSH or cloud config. It is **not** a blanket allow — a secrets floor still applies, because a leaked credential cannot be unwritten from the transcript. While off, a red `⚠ HOST GUARD OFF` badge stays on the status line.
+
+  | Released by `off` | Still prompts |
+  | --- | --- |
+  | `~/.ssh/config`, `~/.ssh/config.d/*` | private keys (`id_ed25519`, `id_rsa`, `pi_deploy`, …) |
+  | `~/.ssh/known_hosts`, `authorized_keys` | `~/Library/Keychains/*` |
+  | `~/.ssh/*.pub` | `~/.secrets/*`, `~/.aws/credentials` |
+  | `~/.aws/config`, `~/.gnupg/*.conf` | 1Password application data |
+  | Desktop / `pi-inbox` medium-risk reads | `~/.kube/config` (embeds bearer tokens) |
+
+  The list is an allowlist, so an unfamiliar file appearing in a protected directory keeps prompting rather than slipping through. A secret-looking filename overrides it too: `~/.ssh/private-key.pub` stays guarded. For bash, a command is released only when *every* protected path it names is releasable — `cat ~/.ssh/config ~/.ssh/id_rsa` still prompts.
+
   High-risk findings ask rather than refuse, because it is your own machine and you are there to judge. Two properties are preserved regardless:
 
   - **It fails closed.** With no UI (headless `pi -p`, or a context that cannot prompt) there is no way to approve, so the call is refused. Denying also refuses.
