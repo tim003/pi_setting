@@ -104,8 +104,10 @@ Grants live in `~/.pi/agent/bash-guard-trust.json`, deliberately outside any rep
 **Trust follows the paths a command touches, not the directory it runs from.** A command is released only when it names at least one path and *every* path resolves inside a trusted root. Consequences worth knowing:
 
 - Symlinks are resolved before the check, so a link inside the project pointing at `$HOME` cannot launder trust.
+- A leading `~` is expanded to your home directory first, the way the shell will expand it. `rm -rf ~/.ssh` is outside the project and prompts. Another user's home (`~root/x`) cannot be resolved here and fails closed. A quoted `"~/.ssh"` is read as home too, which the shell would not do — the cost is one extra prompt for a file literally named `~`.
 - Anything unresolvable — `$BUILD_DIR`, a command substitution — counts as outside and still prompts. A guard that guesses is not a guard.
 - One outside target spoils the whole command: `rm -rf build /etc/hosts` prompts.
+- A subcommand is not a path. For `git`, `npm`, `docker`, `cargo` and similar, the leading verb is skipped, so `git clean -fdx` names no path at all and therefore prompts every time — a grant cannot speak for a command whose targets it cannot see. `git rm build/x.txt` is still released, because that one does name a path.
 
 Never released by a grant, however trusted the project:
 

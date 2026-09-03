@@ -153,6 +153,44 @@ function expandTilde(token: string): string | null {
 	return token;
 }
 
+/**
+ * Programs whose first bare word is a verb, not a file.
+ *
+ * `git clean -fdx` names no path at all, but reading "clean" as one made it
+ * resolve inside the project and released a command whose actual effect was
+ * never examined. Dropping the verb usually leaves no target, and no target
+ * fails closed, so these commands are asked about rather than assumed safe.
+ */
+const SUBCOMMAND_PROGRAMS = new Set([
+	"git",
+	"npm",
+	"pnpm",
+	"yarn",
+	"npx",
+	"cargo",
+	"docker",
+	"kubectl",
+	"brew",
+	"go",
+	"gh",
+	"pip",
+	"pip3",
+	"bundle",
+	"poetry",
+]);
+
+/**
+ * A verb like `clean` or `rm`, as opposed to a path.
+ *
+ * The distinction is needed because flags take values: in `git -C /etc clean`
+ * the first bare word is `/etc`, and consuming that as the subcommand would
+ * both lose the one path that matters and promote `clean` into a fake one.
+ * No subcommand contains a separator, so anything path-shaped is a path.
+ */
+function looksLikeSubcommand(token: string): boolean {
+	return !token.includes("/") && !token.startsWith("~") && !token.startsWith(".");
+}
+
 function extractTargets(command: string): Targets {
 	let tokens: unknown[];
 	try {
@@ -164,6 +202,7 @@ function extractTargets(command: string): Targets {
 	const paths: string[] = [];
 	let unresolvable = false;
 	let expectProgram = true;
+	let expectSubcommand = false;
 
 	for (const token of tokens) {
 		if (typeof token === "string") {
@@ -174,9 +213,14 @@ function extractTargets(command: string): Targets {
 			}
 			if (expectProgram) {
 				expectProgram = false;
+				expectSubcommand = SUBCOMMAND_PROGRAMS.has(basename(token));
 				continue;
 			}
 			if (token.startsWith("-")) continue;
+			if (expectSubcommand && looksLikeSubcommand(token)) {
+				expectSubcommand = false;
+				continue;
+			}
 			const expanded = expandTilde(token);
 			if (expanded === null) {
 				unresolvable = true;
@@ -192,8 +236,11 @@ function extractTargets(command: string): Targets {
 		if (record.op === "glob" && typeof record.pattern === "string") {
 			if (expectProgram) {
 				expectProgram = false;
+				expectSubcommand = false;
 				continue;
 			}
+			// A glob cannot be a subcommand, so it is a target either way.
+			expectSubcommand = false;
 			// A glob is judged by the literal directory it is anchored in.
 			const literal = record.pattern.split(/[*?[]/)[0];
 			if (literal) {
@@ -210,6 +257,7 @@ function extractTargets(command: string): Targets {
 		if (typeof record.op === "string") {
 			// A new segment begins, so the next word is a program again.
 			expectProgram = true;
+			expectSubcommand = false;
 		}
 	}
 

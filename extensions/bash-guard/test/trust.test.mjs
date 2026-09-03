@@ -159,6 +159,37 @@ test("a file actually named ~ inside the project is still released", () => {
 	rmSync(dir, { recursive: true, force: true });
 });
 
+// `git clean -fdx` names no path at all. Reading "clean" as one made the
+// guard confine a file that does not exist, decide it was inside the project,
+// and release a command it had never actually inspected.
+test("a git subcommand is not a path, so a pathless git command asks", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved("git clean -fdx", { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+// Skipping the subcommand must not blind the check to the real arguments.
+test("a git command's actual path argument is still judged", () => {
+	const dir = scratch();
+	mkdirSync(join(dir, "build"), { recursive: true });
+	writeFileSync(join(dir, "build", "x.txt"), "x");
+	assert.equal(isAutoApproved("git rm build/x.txt", { cwd: dir, trustedRoots: [dir] }), true);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("a git command pointed outside the project still asks", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved("git -C /etc clean -fdx", { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("an ordinary program's first argument is still a path", () => {
+	const dir = scratch();
+	mkdirSync(join(dir, "build"), { recursive: true });
+	assert.equal(isAutoApproved("rm -rf build", { cwd: dir, trustedRoots: [dir] }), true);
+	rmSync(dir, { recursive: true, force: true });
+});
+
 test("a relative path escaping the project still asks", () => {
 	const dir = scratch();
 	const repo = join(dir, "repo");
