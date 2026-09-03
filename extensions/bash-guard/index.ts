@@ -489,7 +489,11 @@ export default function (pi: ExtensionAPI) {
 		const { theme } = ctx.ui;
 		ctx.ui.setStatus(
 			BASH_GUARD_TRUST_STATUS_KEY,
-			trusted ? theme.bg("toolBg", theme.bold(theme.fg("warning", " ⚿ project trusted "))) : undefined,
+			// toolPendingBg, not toolErrorBg: a grant is a standing relaxation worth seeing,
+			// but not the alarm that host-safety-guard being off warrants.
+			trusted
+				? theme.bg("toolPendingBg", theme.bold(theme.fg("warning", " ⚿ project trusted ")))
+				: undefined,
 		);
 	};
 

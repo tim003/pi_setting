@@ -34,17 +34,46 @@ async function activateGuard({ cwd, agentDir, hasUI = true, promptChoice = "abor
 		flags.set(name, value);
 	}
 
+	// Pi throws on a colour name it does not know. A harness that accepted any string
+	// would agree with broken code and hide it — exactly how theme.bg("toolBg") shipped
+	// and threw at every session start in a trusted project.
+	const FG_COLORS = new Set([
+		"text", "accent", "muted", "dim", "searchMatchText",
+		"success", "error", "warning",
+		"border", "borderAccent", "borderMuted",
+		"userMessageText", "customMessageText", "customMessageLabel",
+		"toolTitle", "toolOutput",
+		"toolDiffAdded", "toolDiffRemoved", "toolDiffContext",
+		"mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdCodeBlock", "mdCodeBlockBorder",
+		"mdQuote", "mdQuoteBorder", "mdHr", "mdListBullet",
+		"syntaxComment", "syntaxKeyword", "syntaxFunction", "syntaxVariable", "syntaxString",
+		"syntaxNumber", "syntaxType", "syntaxOperator", "syntaxPunctuation",
+		"thinkingOff", "thinkingMinimal", "thinkingLow", "thinkingMedium", "thinkingHigh",
+		"thinkingXhigh", "thinkingMax",
+		"bashMode",
+	]);
+	const BG_COLORS = new Set([
+		"selectedBg", "searchMatchBg", "userMessageBg", "customMessageBg",
+		"toolPendingBg", "toolSuccessBg", "toolErrorBg",
+	]);
 	const theme = {
-		fg: (_c, t) => t,
-		bg: (_c, t) => t,
+		fg: (c, t) => {
+			if (!FG_COLORS.has(c)) throw new Error(`Unknown theme color: ${c}`);
+			return t;
+		},
+		bg: (c, t) => {
+			if (!BG_COLORS.has(c)) throw new Error(`Unknown theme background color: ${c}`);
+			return t;
+		},
 		bold: (t) => t,
 	};
+	const statuses = new Map();
 	const ctx = {
 		hasUI,
 		sessionManager: { getCwd: () => cwd },
 		ui: {
 			theme,
-			setStatus: () => {},
+			setStatus: (key, value) => statuses.set(key, value),
 			notify: () => {},
 			custom: async (render) => {
 				promptsRaised++;
@@ -73,6 +102,8 @@ async function activateGuard({ cwd, agentDir, hasUI = true, promptChoice = "abor
 		ctx,
 		promptCount: () => promptsRaised,
 		items: () => lastItems,
+		sessionStart: (reason = "startup") => handlers.get("session_start")({ reason }, ctx),
+		statuses: () => statuses,
 	};
 }
 
@@ -230,6 +261,38 @@ test("an untrusted project prompts exactly as before", async () => {
 	const result = await guard.bash("rm -rf build");
 	assert.equal(guard.promptCount(), 1, "expected a popup with no grant in place");
 	assert.ok(result?.block);
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("the trust badge renders with real theme colours in a trusted project", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const guard = await activateGuard({ cwd: project, agentDir: join(dir, "agent") });
+	await guard.command("bash-guard").handler("trust", guard.ctx);
+
+	// Threw "Unknown theme background color: toolBg" before the fix, so the badge a
+	// standing grant depends on was never once drawn.
+	await guard.sessionStart();
+
+	const badge = [...guard.statuses().values()].find((v) => typeof v === "string" && v.includes("trusted"));
+	assert.ok(badge, "expected a visible trusted badge after granting trust");
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("no trust badge is shown in an untrusted project", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const guard = await activateGuard({ cwd: project, agentDir: join(dir, "agent") });
+	await guard.sessionStart();
+
+	const badge = [...guard.statuses().values()].find((v) => typeof v === "string" && v.includes("trusted"));
+	assert.equal(badge, undefined, "expected no badge without a grant");
 
 	rmSync(dir, { recursive: true, force: true });
 });
