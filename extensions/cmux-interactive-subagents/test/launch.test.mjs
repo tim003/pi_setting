@@ -50,6 +50,51 @@ test("buildPiCommand explicitly loads pi-claude-auth when installed", () => {
   assert.match(command, new RegExp(`--no-extensions -e '${claudeAuthPath}' -e '/ext/child-helper\\.ts'`));
 });
 
+/**
+ * Children launch with --no-extensions, so every extension they get is one named
+ * here. bash-guard was not, which left subagents running destructive commands with
+ * no guard at all while the parent session had one.
+ */
+function agentDirWithGuard() {
+  const agentDir = mkdtempSync(join(tmpdir(), "cmux-agent-dir-"));
+  mkdirSync(join(agentDir, "extensions/bash-guard"), { recursive: true });
+  writeFileSync(join(agentDir, "extensions/bash-guard/index.ts"), "// fake extension\n");
+  return agentDir;
+}
+
+function childCommand(agentDir) {
+  return buildPiCommand({
+    childHelperPath: "/ext/child-helper.ts",
+    sessionFile: "/tmp/child.jsonl",
+    message: "Do work",
+    loadout: { name: "guarded-child", agent: "delegate" },
+    piCodingAgentDir: agentDir,
+  });
+}
+
+test("buildPiCommand loads bash-guard, so a child is not left unguarded", () => {
+  const agentDir = agentDirWithGuard();
+  const guardPath = join(agentDir, "extensions/bash-guard/index.ts");
+
+  assert.match(childCommand(agentDir), new RegExp(`-e '${guardPath}'`));
+});
+
+test("buildPiCommand still launches when bash-guard is not installed", () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "cmux-agent-dir-"));
+  const command = childCommand(agentDir);
+
+  assert.doesNotMatch(command, /bash-guard/);
+  assert.match(command, /-e '\/ext\/child-helper\.ts'/, "the child helper must still load");
+});
+
+test("a child is not flagged as a subagent to bash-guard", () => {
+  // PI_SUBAGENT_DEPTH would switch bash-guard to a mode that hard-blocks recursive
+  // deletes unconditionally, which no project grant can release. Children must run
+  // the ordinary path: trusted project proceeds, everything else blocks for want of
+  // a UI to approve in.
+  assert.doesNotMatch(childCommand(agentDirWithGuard()), /PI_SUBAGENT_DEPTH/);
+});
+
 test("normalizeMessageForTui makes multiline steer safe as one submitted message", () => {
   assert.equal(normalizeMessageForTui("line one\nline two\n\nline three"), "line one\\nline two\\n\\nline three");
 });

@@ -170,6 +170,21 @@ Requirements:
 - `~/.pi/agent/agents/` must contain the six agent definitions; without them `subagents_list` is empty.
 - Keep `pi-claude-auth` installed; the local child launcher explicitly loads it so Anthropic child Pi processes inherit Claude Code auth while other extensions remain isolated.
 
+### What a child is allowed to do
+
+Children launch with `--no-extensions`, so they get only what the launcher names: `pi-claude-auth`, **`bash-guard`**, and the child helper. bash-guard is on that list because a child has no UI to approve anything in — without it the least supervised sessions on the machine were also the only unguarded ones, and a subagent would run `rm -rf` unblocked.
+
+A child therefore behaves like a session that can never be asked:
+
+| where it runs | high-risk command |
+| --- | --- |
+| inside a trusted project | proceeds |
+| anywhere else | blocked, with no way to approve |
+
+So **granting a project is what lets subagents do real work in it**. Without a grant they can still read, search and run ordinary commands; they just cannot delete or rewrite anything the guard rates high-risk.
+
+The launcher deliberately does **not** set `PI_SUBAGENT_DEPTH`. That variable selects a bash-guard mode which hard-blocks recursive deletes outright, and no project grant can release it, so children could never do the routine work a trusted project exists to permit.
+
 Repair by re-running the installer, which recopies the extension and agent definitions:
 
 ```bash

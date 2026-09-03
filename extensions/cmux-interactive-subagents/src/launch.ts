@@ -21,10 +21,29 @@ function extensionPathIfInstalled(agentDir: string, packageName: string): string
   return existsSync(path) ? path : undefined;
 }
 
+/** Locally installed extensions live outside npm/, so they resolve differently. */
+function localExtensionIfInstalled(agentDir: string, name: string): string | undefined {
+  const path = join(agentDir, "extensions", name, "index.ts");
+  return existsSync(path) ? path : undefined;
+}
+
 export function buildPiCommand(options: BuildPiCommandOptions): string {
   const { childHelperPath, sessionFile, message, loadout, piCodingAgentDir } = options;
   const resolvedAgentDir = piCodingAgentDir || join(homedir(), ".pi", "agent");
-  const extensionArgs = [extensionPathIfInstalled(resolvedAgentDir, "pi-claude-auth"), childHelperPath].filter((path): path is string => Boolean(path));
+  // --no-extensions means a child gets only what is named here. bash-guard has to be
+  // among them: a child has no UI to approve anything in, so without it the least
+  // supervised sessions on the machine were also the only unguarded ones.
+  //
+  // It is loaded as an ordinary extension, deliberately not flagged via
+  // PI_SUBAGENT_DEPTH. That flag selects a mode which hard-blocks recursive deletes
+  // outright, and no project grant can release it — children could then never do the
+  // routine work a trusted project exists to permit. On the ordinary path a child
+  // proceeds inside a granted project and blocks everywhere else, for want of a UI.
+  const extensionArgs = [
+    extensionPathIfInstalled(resolvedAgentDir, "pi-claude-auth"),
+    localExtensionIfInstalled(resolvedAgentDir, "bash-guard"),
+    childHelperPath,
+  ].filter((path): path is string => Boolean(path));
   const parts = ["pi", "--session", shellEscape(sessionFile), "--no-extensions"];
   for (const extensionPath of extensionArgs) {
     parts.push("-e", shellEscape(extensionPath));
