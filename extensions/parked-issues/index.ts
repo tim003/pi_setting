@@ -79,6 +79,18 @@ export default function parkedIssues(pi: ExtensionAPI) {
 		return issues;
 	};
 
+	/**
+	 * Hand the user's words to the agent as a real prompt.
+	 *
+	 * The issue is named so the agent knows what "it" refers to — the popup text is
+	 * not in the conversation, so an instruction like "just fix it" would otherwise
+	 * arrive with no referent. Delivered as a follow-up so it lands after the current
+	 * tool calls finish rather than interleaving with them.
+	 */
+	const promptAgent = (issue: ParkedIssue, text: string): void => {
+		pi.sendUserMessage?.(`Parked issue "${issue.title}" (${issue.id}): ${text}`, { deliverAs: "followUp" });
+	};
+
 	/** Ask the user what to do with a freshly noticed item. */
 	async function triage(ctx: any, issue: ParkedIssue): Promise<void> {
 		const action = await choose(
@@ -92,7 +104,7 @@ export default function parkedIssues(pi: ExtensionAPI) {
 				{ value: "park", label: "Park it", description: "Add to the backlog for later" },
 				{ value: "front", label: "Park at the front", description: "Do this next" },
 				{ value: "discard", label: "Discard", description: "Not worth tracking" },
-				{ value: "other", label: "Other…", description: "Reword it or add a note" },
+				{ value: "other", label: "Other…", description: "Tell me what to do about it" },
 			],
 		);
 
@@ -105,12 +117,13 @@ export default function parkedIssues(pi: ExtensionAPI) {
 
 		let recorded = issue;
 		if (action === "front") recorded = { ...issue, priority: 0 };
-		if (action === "other") {
-			const text = await askText(ctx, `Reword this issue:\n\n${issue.title}`);
-			if (!text) return;
-			recorded = { ...issue, title: text, detail: issue.detail ?? issue.title };
-		}
+
+		// Keep the issue either way: the typed text steers the agent, it does not
+		// replace the record, so cancelling the prompt still leaves the item parked.
+		const instruction = action === "other" ? await askText(ctx, `What should happen to this issue?\n\n${issue.title}`) : undefined;
+
 		pi.appendEntry(PARKED_RECORDED, { issue: recorded });
+		if (instruction) promptAgent(recorded, instruction);
 	}
 
 	pi.registerTool({
@@ -266,15 +279,16 @@ export default function parkedIssues(pi: ExtensionAPI) {
 						{ value: "resolve", label: "Mark resolved" },
 						{ value: "front", label: "Move to the front" },
 						{ value: "discard", label: "Discard" },
-						{ value: "other", label: "Other…", description: "Reword it" },
+						{ value: "other", label: "Other…", description: "Tell me what to do about it" },
 					]);
 
 					if (action === "resolve") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "resolved" });
 					if (action === "discard") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "discarded" });
 					if (action === "front") pi.appendEntry(PARKED_UPDATED, { id: picked, priority: 0 });
 					if (action === "other") {
-						const text = await askText(ctx, "Reword this issue:");
-						if (text) pi.appendEntry(PARKED_UPDATED, { id: picked, title: text });
+						const issue = open.find((candidate) => candidate.id === picked);
+						const text = issue ? await askText(ctx, `What should happen to this issue?\n\n${issue.title}`) : undefined;
+						if (issue && text) promptAgent(issue, text);
 					}
 				}
 			}
