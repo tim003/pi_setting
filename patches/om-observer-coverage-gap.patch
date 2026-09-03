@@ -1,0 +1,413 @@
+From 4a6375aa5afde12cc3d7db28a769eaaa145383bb Mon Sep 17 00:00:00 2001
+From: tim003 <twong03@gmail.com>
+Date: Thu, 3 Sep 2026 08:01:28 +0800
+Subject: [PATCH] Track observer coverage as spans so a failed observer is
+ retried
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Observers run concurrently over consecutive slices, but coverage was tracked
+as a single furthest-end marker: the max committed coversUpToId, OR'd with an
+in-memory dispatch marker that was never rolled back.
+
+That loses history. If observer A (start, raw-2] dies while observer B
+(raw-2, raw-4] succeeds, the watermark jumps to raw-4. A's slice is skipped
+for the rest of the process, and because B's marker is committed to the
+ledger, it stays skipped after a restart too — session_start only clears the
+in-memory marker. The conversation in that span is never observed.
+
+Coverage is now a set of half-open spans (fromId, upToId], and the watermark
+is the end of the chain that runs unbroken from the start of the branch. A
+later sibling's success can no longer bridge a hole, so the next trigger
+re-selects the dead observer's slice.
+
+- observations entries additionally record coversFromId; entries written
+  before this change have no start marker and are read as chaining from the
+  beginning, so existing ledgers keep their current watermark.
+- runtime.dispatchedCoversUpToId becomes runtime.dispatchedSpans, keyed by
+  runId. A span is claimed at dispatch, kept when the run succeeds (an empty
+  result still means the slice was looked at, so it is not re-observed on a
+  loop) and dropped when the run fails, which is what frees it for retry.
+- spans naming entries absent from the branch (a rewound /tree) are ignored
+  rather than allowed to bridge a gap.
+
+Found after an observer was SIGTERMed mid-exit: it committed nothing, so no
+gap opened that time, but a sibling commit would have buried the slice.
+---
+ src/hooks/observer-trigger.ts |  37 ++++++--
+ src/index.ts                  |   2 +-
+ src/ledger/progress.ts        |  58 ++++++++++++
+ src/runtime.ts                |   9 +-
+ tests/coverage-gap.test.ts    | 163 ++++++++++++++++++++++++++++++++++
+ 5 files changed, 257 insertions(+), 12 deletions(-)
+ create mode 100644 tests/coverage-gap.test.ts
+
+diff --git a/src/hooks/observer-trigger.ts b/src/hooks/observer-trigger.ts
+index f29a84a..732850e 100644
+--- a/src/hooks/observer-trigger.ts
++++ b/src/hooks/observer-trigger.ts
+@@ -3,7 +3,9 @@ import { assignObservationTimestamps } from "../ids.js";
+ import {
+ 	entryIndexForId,
+ 	foldLedger,
+-	latestCoverageMarkerId,
++	type CoverageSpan,
++	contiguousCoverageEnd,
++	ledgerCoverageSpans,
+ 	nowTimestamp,
+ 	rawTokensAfterIndex,
+ 	selectSourceSlice,
+@@ -57,11 +59,21 @@ function laterMarkerId(branch: Entry[], a: string | undefined, b: string | undef
+ 	return ia >= ib ? a : b;
+ }
+ 
+-/** Effective watermark = later of committed ledger coverage and the in-memory dispatch marker. */
+-function effectiveWatermarkId(runtime: Runtime, branch: Entry[]): string | undefined {
+-	const committed = latestCoverageMarkerId(branch, OM_OBSERVATIONS_RECORDED);
+-	const dispatchedResolved = entryIndexForId(branch, runtime.dispatchedCoversUpToId) >= 0 ? runtime.dispatchedCoversUpToId : undefined;
+-	return laterMarkerId(branch, committed, dispatchedResolved);
++/**
++ * Effective watermark = end of the coverage chaining unbroken from the start of the
++ * branch, counting both committed spans and spans already handed to observers.
++ *
++ * Contiguity is what stops a failed observer's slice from being skipped: a later
++ * sibling's success cannot bridge the hole, so the next dispatch re-selects it.
++ */
++export function effectiveWatermarkId(
++	runtime: { dispatchedSpans: ReadonlyMap<string, CoverageSpan> },
++	branch: Entry[],
++): string | undefined {
++	return contiguousCoverageEnd(branch, [
++		...ledgerCoverageSpans(branch, OM_OBSERVATIONS_RECORDED),
++		...runtime.dispatchedSpans.values(),
++	]);
+ }
+ 
+ /**
+@@ -93,9 +105,8 @@ export function evaluateObserverTriggers(pi: ExtensionAPI, runtime: Runtime, ctx
+ 		const slice = selectSourceSlice(branch, watermarkId, runtime.config.chunkTokens);
+ 		if (slice.entries.length === 0 || !slice.coversUpToId) break;
+ 
+-		runtime.dispatchedCoversUpToId = slice.coversUpToId;
+ 		runtime.trackObserverTask(
+-			dispatchObserver(pi, runtime, { hasUI, ui, sessionManager, getContextUsage: ctx.getContextUsage }, slice),
++			dispatchObserver(pi, runtime, { hasUI, ui, sessionManager, getContextUsage: ctx.getContextUsage }, slice, watermarkId),
+ 		);
+ 		if (hasUI) startToastLines.push(`om: observer started (~${slice.tokens.toLocaleString()} tok)`);
+ 	}
+@@ -109,11 +120,16 @@ async function dispatchObserver(
+ 	runtime: Runtime,
+ 	ctx: TriggerCtx,
+ 	slice: SourceSlice,
++	coversFromId: string | undefined,
+ ): Promise<void> {
+ 	const runId = nextRunId();
+ 	const controller = new AbortController();
+ 	const coversUpToId = slice.coversUpToId!;
+ 	runtime.observersInFlight.set(runId, { controller, coversUpToId });
++	// Claim the span up front so concurrent dispatches do not re-select it. Kept on
++	// success (an empty result still means the span was looked at) and dropped on
++	// failure, which is what lets the slice be retried.
++	runtime.dispatchedSpans.set(runId, { fromId: coversFromId, upToId: coversUpToId });
+ 
+ 	const { text: chunkText } = serializeSourceAddressedBranchEntries(slice.entries);
+ 	const lastEntry = slice.entries.at(-1);
+@@ -166,7 +182,7 @@ async function dispatchObserver(
+ 		});
+ 
+ 		if (observations.length > 0) {
+-			pi.appendEntry(OM_OBSERVATIONS_RECORDED, { observations, coversUpToId });
++			pi.appendEntry(OM_OBSERVATIONS_RECORDED, { observations, coversUpToId, coversFromId });
+ 		}
+ 		runtime.status.workerDone(runId, observations.length);
+ 		runtime.refreshFooterGauges(ctx.sessionManager.getBranch(), ctx.getContextUsage?.()?.tokens ?? null);
+@@ -180,6 +196,9 @@ async function dispatchObserver(
+ 			);
+ 		}
+ 	} catch (error) {
++		// Release the span so the next trigger re-observes this slice instead of letting a
++		// later sibling's committed coverage bury it.
++		runtime.dispatchedSpans.delete(runId);
+ 		const message = error instanceof Error ? error.message : String(error);
+ 		runtime.lastWorkerError = message;
+ 		runtime.status.workerError(runId);
+diff --git a/src/index.ts b/src/index.ts
+index c7fef59..5c6b712 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -44,7 +44,7 @@ export default function observationalMemory(pi: ExtensionAPI): void {
+ 
+ 	pi.on("session_start", (_event: unknown, ctx: any) => {
+ 		runtime.ensureConfig(ctx.cwd);
+-		runtime.dispatchedCoversUpToId = undefined;
++		runtime.dispatchedSpans.clear();
+ 		const branch = ctx.sessionManager.getBranch() as Entry[];
+ 		runtime.enabled = readGateFromLedger(branch);
+ 		if (runtime.enabled) runtime.memoryRoot = ensureSessionMemory(ctx);
+diff --git a/src/ledger/progress.ts b/src/ledger/progress.ts
+index adf9dc6..fd451fb 100644
+--- a/src/ledger/progress.ts
++++ b/src/ledger/progress.ts
+@@ -97,6 +97,64 @@ export function latestCoverageMarkerId(entries: Entry[], customType: MemoryCusto
+ 	return latestMarkerId;
+ }
+ 
++/**
++ * A half-open range of source entries `(fromId, upToId]` that some observer covered.
++ * `fromId === undefined` means "from the start of the branch", which is also how
++ * ledger entries written before `coversFromId` existed are read.
++ */
++export type CoverageSpan = { fromId: string | undefined; upToId: string };
++
++/** Committed coverage, as spans rather than bare end markers. */
++export function ledgerCoverageSpans(entries: Entry[], customType: MemoryCustomType): CoverageSpan[] {
++	const spans: CoverageSpan[] = [];
++	for (const entry of entries) {
++		if (!isValidCoverageEntry(entry, customType)) continue;
++		const data = entry.data as { coversUpToId: string; coversFromId?: unknown };
++		spans.push({
++			fromId: typeof data.coversFromId === "string" ? data.coversFromId : undefined,
++			upToId: data.coversUpToId,
++		});
++	}
++	return spans;
++}
++
++/**
++ * End of the coverage that chains unbroken from the start of the branch.
++ *
++ * Observers run concurrently over consecutive slices, so a failed observer leaves a
++ * hole that a later, successful observer would otherwise hide: taking the maximum end
++ * marker advances the watermark past the dead observer's slice, and because the
++ * committed marker is durable, that span is never re-observed even after a restart.
++ * Requiring contiguity makes the watermark stall at the hole until it is filled.
++ */
++export function contiguousCoverageEnd(entries: Entry[], spans: readonly CoverageSpan[]): string | undefined {
++	const idToIndex = entryIndexById(entries);
++	const resolved = spans
++		.map((span) => ({
++			fromIndex: span.fromId === undefined ? -1 : (idToIndex.get(span.fromId) ?? Number.NaN),
++			upToIndex: idToIndex.get(span.upToId) ?? Number.NaN,
++			upToId: span.upToId,
++		}))
++		// A span naming entries that are not on this branch (a rewound /tree, say) cannot
++		// be placed, so it must not be allowed to bridge a gap.
++		.filter((span) => Number.isInteger(span.fromIndex) && Number.isInteger(span.upToIndex));
++
++	let cursorIndex = -1;
++	let cursorId: string | undefined;
++	// Spans commit out of order, so sweep repeatedly until nothing extends the chain.
++	for (let advanced = true; advanced; ) {
++		advanced = false;
++		for (const span of resolved) {
++			if (span.fromIndex <= cursorIndex && span.upToIndex > cursorIndex) {
++				cursorIndex = span.upToIndex;
++				cursorId = span.upToId;
++				advanced = true;
++			}
++		}
++	}
++	return cursorId;
++}
++
+ export function earlierCoverageMarkerId(
+ 	entries: Entry[],
+ 	firstId: string | undefined,
+diff --git a/src/runtime.ts b/src/runtime.ts
+index 71d89f3..04e5858 100644
+--- a/src/runtime.ts
++++ b/src/runtime.ts
+@@ -1,5 +1,5 @@
+ import { type Config, DEFAULTS, loadConfig } from "./config.js";
+-import { foldLedger, poolTokens, rawTokensSinceObservationCoverage, sumSessionCost, type Entry } from "./ledger/index.js";
++import { type CoverageSpan, foldLedger, poolTokens, rawTokensSinceObservationCoverage, sumSessionCost, type Entry } from "./ledger/index.js";
+ import { StatusController } from "./ui/status-controller.js";
+ 
+ /**
+@@ -46,7 +46,12 @@ export class Runtime {
+ 	 * commit no ledger entry) still advance the clock. In-memory only — lost on resume (harmless;
+ 	 * worst case a chunk is re-observed).
+ 	 */
+-	dispatchedCoversUpToId: string | undefined;
++	/**
++	 * Spans handed to observers, keyed by runId. Entries are kept when a run succeeds
++	 * (even with zero observations, so the slice is not re-observed on a loop) and
++	 * removed when a run fails, so the slice returns to the queue.
++	 */
++	readonly dispatchedSpans = new Map<string, CoverageSpan>();
+ 
+ 	/** Guards so compaction trigger + hook never re-enter. */
+ 	compactInFlight = false;
+diff --git a/tests/coverage-gap.test.ts b/tests/coverage-gap.test.ts
+new file mode 100644
+index 0000000..ceb66f7
+--- /dev/null
++++ b/tests/coverage-gap.test.ts
+@@ -0,0 +1,163 @@
++import { describe, expect, it } from "vitest";
++
++import { type CoverageSpan, OM_OBSERVATIONS_RECORDED, contiguousCoverageEnd, ledgerCoverageSpans } from "../src/ledger/index.js";
++import { effectiveWatermarkId } from "../src/hooks/observer-trigger.js";
++import { observation, observationsRecordedEntry, textCustomMessage } from "./fixtures/session.js";
++
++/**
++ * Observers run concurrently over consecutive slices. When an earlier observer dies
++ * and a later one commits, the max-marker watermark jumps over the dead observer's
++ * slice and that span is never observed again — not even after a restart, because
++ * the committed marker already sits past it.
++ *
++ * Coverage therefore has to be tracked as spans and advanced only while they chain
++ * from the beginning of the branch.
++ */
++const branch = [
++	textCustomMessage("raw-1", "aaaa"),
++	textCustomMessage("raw-2", "bbbb"),
++	textCustomMessage("raw-3", "cccc"),
++	textCustomMessage("raw-4", "dddd"),
++];
++
++describe("contiguousCoverageEnd", () => {
++	it("does not advance past a hole left by a failed observer", () => {
++		// Observer A owned (start, raw-2] and died; observer B committed (raw-2, raw-4].
++		const spans = [{ fromId: "raw-2", upToId: "raw-4" }];
++		expect(contiguousCoverageEnd(branch, spans)).toBeUndefined();
++	});
++
++	it("advances to the end once the hole is filled", () => {
++		const spans = [
++			{ fromId: "raw-2", upToId: "raw-4" },
++			{ fromId: undefined, upToId: "raw-2" },
++		];
++		expect(contiguousCoverageEnd(branch, spans)).toBe("raw-4");
++	});
++
++	it("chains spans committed out of order", () => {
++		const spans = [
++			{ fromId: "raw-3", upToId: "raw-4" },
++			{ fromId: undefined, upToId: "raw-1" },
++			{ fromId: "raw-1", upToId: "raw-3" },
++		];
++		expect(contiguousCoverageEnd(branch, spans)).toBe("raw-4");
++	});
++
++	it("stops at the first hole even when later spans exist", () => {
++		const spans = [
++			{ fromId: undefined, upToId: "raw-1" },
++			{ fromId: "raw-3", upToId: "raw-4" },
++		];
++		expect(contiguousCoverageEnd(branch, spans)).toBe("raw-1");
++	});
++
++	it("treats legacy spans with no start marker as chaining from the beginning", () => {
++		// Ledgers written before coversFromId existed must keep their old watermark.
++		expect(contiguousCoverageEnd(branch, [{ fromId: undefined, upToId: "raw-3" }])).toBe("raw-3");
++	});
++
++	it("returns undefined when there is no coverage at all", () => {
++		expect(contiguousCoverageEnd(branch, [])).toBeUndefined();
++	});
++
++	it("ignores spans whose markers are not on this branch", () => {
++		const spans = [{ fromId: undefined, upToId: "raw-9" }];
++		expect(contiguousCoverageEnd(branch, spans)).toBeUndefined();
++	});
++
++	it("keeps the furthest end when spans overlap", () => {
++		const spans = [
++			{ fromId: undefined, upToId: "raw-3" },
++			{ fromId: "raw-1", upToId: "raw-2" },
++		];
++		expect(contiguousCoverageEnd(branch, spans)).toBe("raw-3");
++	});
++});
++
++describe("ledgerCoverageSpans", () => {
++	it("reads committed spans, defaulting the start when coversFromId is absent", () => {
++		const entries = [
++			branch[0],
++			branch[1],
++			observationsRecordedEntry("om-1", {
++				observations: [observation("2026-05-02T10:00:00")],
++				coversUpToId: "raw-2",
++			}),
++		];
++		expect(ledgerCoverageSpans(entries, OM_OBSERVATIONS_RECORDED)).toEqual([
++			{ fromId: undefined, upToId: "raw-2" },
++		]);
++	});
++
++	it("preserves coversFromId when the observer recorded one", () => {
++		const entries = [
++			...branch,
++			observationsRecordedEntry("om-1", {
++				observations: [observation("2026-05-02T10:00:00")],
++				coversUpToId: "raw-4",
++				coversFromId: "raw-2",
++			} as any),
++		];
++		expect(ledgerCoverageSpans(entries, OM_OBSERVATIONS_RECORDED)).toEqual([
++			{ fromId: "raw-2", upToId: "raw-4" },
++		]);
++	});
++
++	it("skips entries that carry no observations", () => {
++		const entries = [
++			...branch,
++			observationsRecordedEntry("om-1", { observations: [], coversUpToId: "raw-4" }),
++		];
++		expect(ledgerCoverageSpans(entries, OM_OBSERVATIONS_RECORDED)).toEqual([]);
++	});
++});
++
++describe("effectiveWatermarkId (dispatch + committed coverage together)", () => {
++	const spans = (...entries: [string, CoverageSpan][]) => new Map<string, CoverageSpan>(entries);
++
++	it("re-selects the dead observer's slice instead of trusting the later commit", () => {
++		// The exact shape of the reported failure: observer A died owning (start, raw-2],
++		// observer B committed (raw-2, raw-4].
++		const branchWithCommit = [
++			...branch,
++			observationsRecordedEntry("om-b", {
++				observations: [observation("2026-05-02T10:00:00")],
++				coversUpToId: "raw-4",
++				coversFromId: "raw-2",
++			} as any),
++		];
++		expect(effectiveWatermarkId({ dispatchedSpans: spans() }, branchWithCommit)).toBeUndefined();
++	});
++
++	it("does not re-dispatch a slice that is still in flight", () => {
++		const inFlight = spans(["run-a", { fromId: undefined, upToId: "raw-2" }]);
++		expect(effectiveWatermarkId({ dispatchedSpans: inFlight }, branch)).toBe("raw-2");
++	});
++
++	it("keeps a successful but empty run's span claimed, so it is not observed on a loop", () => {
++		// A run that legitimately found nothing appends no ledger entry; only the
++		// in-memory span stops it being selected again and again.
++		const claimed = spans(["run-a", { fromId: undefined, upToId: "raw-3" }]);
++		expect(effectiveWatermarkId({ dispatchedSpans: claimed }, branch)).toBe("raw-3");
++	});
++
++	it("releases the slice once the failed run's span is dropped", () => {
++		const claimed = spans(["run-a", { fromId: undefined, upToId: "raw-2" }]);
++		expect(effectiveWatermarkId({ dispatchedSpans: claimed }, branch)).toBe("raw-2");
++		claimed.delete("run-a");
++		expect(effectiveWatermarkId({ dispatchedSpans: claimed }, branch)).toBeUndefined();
++	});
++
++	it("bridges committed and in-flight spans into one chain", () => {
++		const branchWithCommit = [
++			...branch,
++			observationsRecordedEntry("om-a", {
++				observations: [observation("2026-05-02T10:00:00")],
++				coversUpToId: "raw-2",
++			}),
++		];
++		const inFlight = spans(["run-b", { fromId: "raw-2", upToId: "raw-4" }]);
++		expect(effectiveWatermarkId({ dispatchedSpans: inFlight }, branchWithCommit)).toBe("raw-4");
++	});
++})
+-- 
+2.46.0
+

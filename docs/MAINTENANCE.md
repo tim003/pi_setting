@@ -7,11 +7,34 @@ Update, rollback, and troubleshooting notes for this Pi setup.
 ```bash
 pi update --extensions
 ./scripts/patch-pi-claude-auth-cli-version.sh
+./scripts/reapply-om-coverage-gap-fix.sh
 ```
 
 Then run `/reload` inside Pi or restart Pi.
 
 `pi update --extensions` touches installed packages and can overwrite the local `pi-claude-auth` CLI-version patch. Re-run the patch script afterwards. It does not overwrite the local extensions, agents, or skills this repo installs.
+
+Git-installed packages are updated with `git reset --hard @{upstream}`, which discards local commits. `pi-observational-memory` carries one — see [local package fixes](#local-package-fixes) — so re-run its script too. Both scripts are idempotent and safe to run when nothing needs doing.
+
+## Local package fixes
+
+`pi-observational-memory` has a local fix that is not upstream: observer coverage is tracked as spans so a failed observer's slice is retried instead of being buried by a later observer's committed watermark. Without it, a killed observer silently loses that stretch of conversation from memory, permanently.
+
+The durable copy is `patches/om-observer-coverage-gap.patch`; the clone also keeps it on the local branch `fix/observer-coverage-gap`.
+
+```bash
+./scripts/reapply-om-coverage-gap-fix.sh
+```
+
+The script replays the branch onto the new upstream tip, and rebuilds the branch from the patch when the clone is fresh and has no such branch. It refuses to run over an uncommitted working tree rather than stashing someone's work, and aborts cleanly if upstream has changed enough that the fix no longer applies — at which point check whether upstream fixed it properly, and drop the patch if so.
+
+After changing the fix, refresh the patch so the repo stays the source of truth:
+
+```bash
+cd ~/.pi/agent/git/github.com/amosblomqvist/pi-observational-memory
+git format-patch -1 fix/observer-coverage-gap --stdout \
+  > ~/Documents/Obsidian_note/Pi/pi_setting/patches/om-observer-coverage-gap.patch
+```
 
 ## Update Pi itself
 
