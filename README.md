@@ -76,7 +76,7 @@ See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full extension/skill/tool
 ### Local extensions
 
 - `extensions/ask-user-question/`
-- `extensions/bash-guard/`
+- `extensions/bash-guard/` — command risk guard; `/bash-guard trust` grants a project a standing exemption (see [docs/OPERATIONS.md](docs/OPERATIONS.md#trusted-projects))
 - `extensions/browser/`
 - `extensions/cmux-interactive-subagents/`
 - `extensions/host-safety-guard/`

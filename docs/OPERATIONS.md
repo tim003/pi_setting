@@ -85,6 +85,38 @@ Use the guard extensions in low-friction mode unless you deliberately want stric
   Approvals are remembered per path for the rest of the session; `/host-guard <mode>` clears them.
 - `bash-guard` defaults to high-only via `PI_BASH_GUARD_LEVEL`. Medium-risk commands, including routine git commands, are auto-allowed; only high-risk commands prompt. Set `PI_BASH_GUARD_LEVEL=strict` to prompt on medium-risk commands too. Run `/bash-guard` to disable interactive prompting for a session; catastrophic patterns remain hard-blocked in all modes.
 
+  **Patterns match shell structure, not argument text.** Quoted spans, comments and heredoc bodies are masked before matching, so searching for a destructive pattern or describing one in a commit message does not trip the guard. Command substitutions inside double quotes stay live because they execute, and an unterminated quote is left unmasked rather than assumed inert.
+
+### Trusted projects
+
+Every `rm` is high-risk regardless of target, so routine work in one project used to prompt endlessly. A project can now carry a standing grant.
+
+| command | effect |
+| --- | --- |
+| `/bash-guard trust` | Trust the nearest git root above the cwd |
+| `/bash-guard untrust` | Revoke it |
+| `/bash-guard trusted` | List all grants |
+
+The Run/Abort prompt also offers **Run, and trust this project**, but only when a grant would actually have released that command — the option never promises quiet it cannot deliver. A `⛿ project trusted` badge shows while a grant applies.
+
+Grants live in `~/.pi/agent/bash-guard-trust.json`, deliberately outside any repo: a grant stored in a project would travel with it, so cloning a repo would import its own permission to delete your files. Because the store is in the agent directory, subagents read it with no plumbing — which is the point, since they have no UI to prompt in.
+
+**Trust follows the paths a command touches, not the directory it runs from.** A command is released only when it names at least one path and *every* path resolves inside a trusted root. Consequences worth knowing:
+
+- Symlinks are resolved before the check, so a link inside the project pointing at `$HOME` cannot launder trust.
+- Anything unresolvable — `$BUILD_DIR`, a command substitution — counts as outside and still prompts. A guard that guesses is not a guard.
+- One outside target spoils the whole command: `rm -rf build /etc/hosts` prompts.
+
+Never released by a grant, however trusted the project:
+
+| category | examples |
+| --- | --- |
+| system-critical | `sudo`, `mkfs`, `wipefs`, `diskutil erase`, `dd of=/dev/…`, partition tools, power ops, pipe-to-shell |
+| git history | `push --force`, `reset --hard`, `reflog expire`, `gc --prune`, `filter-branch` |
+| irreplaceable targets | the trusted root itself, any `.git` directory |
+
+**The residual risk, stated plainly:** inside a trusted project an agent can delete any file without asking, including uncommitted work. Committed history survives; unstaged edits do not. Grant per project, not to a directory containing many.
+
 ## Complete skills and prompts inventory
 
 Package-installed skills:
