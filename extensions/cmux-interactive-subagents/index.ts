@@ -24,6 +24,7 @@ import { askText, choose } from "./src/ui/select.ts";
 import { buildPiCommand, normalizeMessageForTui, scriptWithExitTrap } from "./src/launch.ts";
 import { makeChildSessionPath, readFinalAssistantMessage, readLoadout, writeLoadout, type ChildLoadout } from "./src/session.ts";
 import { settingsOverride } from "./src/settings.ts";
+import { availableModels, checkModelSelection } from "./src/models.ts";
 
 type ChildRecord = {
   name: string;
@@ -231,11 +232,20 @@ export default function (pi: ExtensionAPI) {
       const sessionFile = makeChildSessionPath(sessionsDir(), validation.name);
       if (agent.body) writePromptFile(validation.name, agent.body);
       const override = settingsOverride(agentDir(), validation.agent);
+      const resolvedModel = validation.model ?? agent.model ?? override.model;
+
+      // Check the model before a tab exists. A child pointed at a provider with
+      // no credentials exits during startup, before any agent turn, so the child
+      // helper never writes an exit sidecar and the tab hangs as "running"
+      // forever. A tool error here is recoverable; that orphan tab is not.
+      const modelCheck = checkModelSelection(resolvedModel, availableModels());
+      if (!modelCheck.ok) return toolResult(modelCheck.error, { error: modelCheck.error, model: resolvedModel }, true);
+
       const loadout: ChildLoadout = {
         name: validation.name,
         agent: validation.agent,
         cwd,
-        model: validation.model ?? agent.model ?? override.model,
+        model: resolvedModel,
         thinking: agent.thinking ?? override.thinking,
         tools: agent.tools,
         systemPrompt: agent.body,

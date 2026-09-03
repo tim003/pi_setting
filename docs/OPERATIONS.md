@@ -208,6 +208,23 @@ A child that has already exited shows no actions: its tab is gone, so there is n
 
 There is deliberately **no cap** on children. A tab is invisible and costs almost nothing, and any cap would mean overflow children run without a tab — which makes them unshowable and unsteerable forever, since a process with no terminal cannot be given one later.
 
+### Why a child's model must name its provider
+
+A child is refused before its tab exists unless its model is written `provider/model`, and unless that provider actually has usable credentials.
+
+This is not fussiness about spelling. A bare name like `gpt-5.6-terra` lets Pi pick the provider, and it can land on one you never authenticated. The child then dies **during startup, before its first agent turn** — which is the one failure this extension cannot see. The exit sidecar the parent waits on is written by the child helper on `agent_settled`, and that event never fires, so the parent lists the child as `running` forever and its tab never auto-closes. Two robotics children hung this way for four hours.
+
+| model override | outcome |
+| --- | --- |
+| *(none)* | Allowed. The child inherits the parent's working model. |
+| `openai-codex/gpt-5.6-terra` | Allowed, provider is authenticated. |
+| `gpt-5.6-terra` | Refused: not provider-qualified. The error suggests the qualified form. |
+| `openrouter/gpt-5.6-terra` | Refused: no credentials for that provider. The error names the ones that do. |
+
+The authenticated set is read from `pi --list-models`, which lists only models whose provider has usable auth — stored credentials *or* an API key in the environment. Asking Pi avoids re-deriving auth from `auth.json` here, which would wrongly reject providers authenticated by environment variable. The answer is cached for a minute, so logging in mid-session is picked up without a restart.
+
+If that lookup fails, the check degrades to the structural rule — still provider-qualified, no auth verdict — rather than blocking every child on a broken lookup.
+
 ### What a child is allowed to do
 
 Children launch with `--no-extensions`, so they get only what the launcher names: `pi-claude-auth`, **`bash-guard`**, and the child helper. bash-guard is on that list because a child has no UI to approve anything in — without it the least supervised sessions on the machine were also the only unguarded ones, and a subagent would run `rm -rf` unblocked.
