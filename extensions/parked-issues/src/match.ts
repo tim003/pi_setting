@@ -9,6 +9,14 @@
 
 import type { ParkedIssue } from "./model.ts";
 
+/**
+ * Dispatched work is still closable. Treating `in-progress` as closed would make
+ * `close_parked_issue` refuse exactly the issues the agent was just sent to fix.
+ */
+function isClosable(issue: ParkedIssue): boolean {
+	return issue.status === "open" || issue.status === "in-progress";
+}
+
 export type MatchResult =
 	| { kind: "found"; issue: ParkedIssue }
 	| { kind: "ambiguous"; matches: ParkedIssue[] }
@@ -21,13 +29,13 @@ export function findIssue(issues: readonly ParkedIssue[], query: string): MatchR
 
 	// An id is unambiguous by construction, so it wins over any title text.
 	const byId = issues.find((issue) => issue.id.toLowerCase() === needle);
-	if (byId) return byId.status === "open" ? { kind: "found", issue: byId } : { kind: "already-closed", issue: byId };
+	if (byId) return isClosable(byId) ? { kind: "found", issue: byId } : { kind: "already-closed", issue: byId };
 
 	const matches = issues.filter((issue) => issue.title.toLowerCase().includes(needle));
 	if (matches.length === 0) return { kind: "not-found" };
 
 	// A closed issue with the same wording must not mask the open one still needing action.
-	const openMatches = matches.filter((issue) => issue.status === "open");
+	const openMatches = matches.filter(isClosable);
 	if (openMatches.length === 1) return { kind: "found", issue: openMatches[0] };
 	if (openMatches.length > 1) return { kind: "ambiguous", matches: openMatches };
 

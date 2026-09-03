@@ -31,15 +31,24 @@ function renderItem(issue: ParkedIssue, box: string): string {
 /** Deterministic checklist of backlog state. Discarded issues are omitted. */
 export function renderChecklist(issues: readonly ParkedIssue[]): string {
 	const open = openIssues(issues);
+	const inProgress = sortIssues(issues.filter((issue) => issue.status === "in-progress"));
 	const resolved = sortIssues(issues.filter((issue) => issue.status === "resolved"));
 
-	if (open.length === 0 && resolved.length === 0) return "# Parked issues\n\nNo parked issues.\n";
+	if (open.length === 0 && inProgress.length === 0 && resolved.length === 0)
+		return "# Parked issues\n\nNo parked issues.\n";
 
 	const lines = ["# Parked issues", ""];
+	// Next names untouched work only: pointing at something already dispatched would
+	// send the agent to redo what it is in the middle of.
 	if (open.length > 0) lines.push(`_Next: ${open[0].title}_`, "");
 	if (open.length > 0) {
 		lines.push("## Open", "");
 		for (const issue of open) lines.push(renderItem(issue, " "));
+		lines.push("");
+	}
+	if (inProgress.length > 0) {
+		lines.push("## In progress", "");
+		for (const issue of inProgress) lines.push(renderItem(issue, "~"));
 		lines.push("");
 	}
 	if (resolved.length > 0) {

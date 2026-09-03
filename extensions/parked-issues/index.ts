@@ -19,12 +19,22 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 import { findIssue } from "./src/match.ts";
-import { PARKED_RECORDED, PARKED_UPDATED, foldIssues, openIssues, type ParkedIssue } from "./src/model.ts";
+import {
+	PARKED_RECORDED,
+	PARKED_UPDATED,
+	activeIssues,
+	foldIssues,
+	openIssues,
+	type ParkedIssue,
+} from "./src/model.ts";
 import { escalate, type Severity } from "./src/severity.ts";
 import { renderChecklist, writeIssuesFile } from "./src/store.ts";
 import { askText, choose } from "./src/ui/select.ts";
 
 const CHECKLIST_ENTRY = "parked.checklist";
+
+/** Sentinel row value; cannot collide with an id, which is always a timestamp. */
+const ALL = "__all__";
 
 const ParkIssueParams = Type.Object({
 	title: Type.String({
@@ -42,7 +52,7 @@ const ParkIssueParams = Type.Object({
 const CloseIssueParams = Type.Object({
 	issue: Type.String({
 		description:
-			"Which issue to close: its id, or a distinctive phrase from its title. Must identify exactly one open issue.",
+			"Which issue to close: its id, or a distinctive phrase from its title. Must identify exactly one outstanding issue, whether open or already in progress.",
 	}),
 	action: Type.Union([Type.Literal("resolve"), Type.Literal("discard")], {
 		description:
@@ -89,6 +99,34 @@ export default function parkedIssues(pi: ExtensionAPI) {
 	 */
 	const promptAgent = (issue: ParkedIssue, text: string): void => {
 		pi.sendUserMessage?.(`Parked issue "${issue.title}" (${issue.id}): ${text}`, { deliverAs: "followUp" });
+	};
+
+	/**
+	 * Hand issues to the agent and mark them in-progress.
+	 *
+	 * Ids travel with the titles because the agent closes issues by reference, and
+	 * titles alone go ambiguous as soon as two issues touch the same file. Closing is
+	 * left to the agent on completion: marking them resolved here would record work as
+	 * done at the moment it was merely started.
+	 */
+	const dispatchWork = (issues: readonly ParkedIssue[]): void => {
+		if (issues.length === 0) return;
+		for (const issue of issues) pi.appendEntry(PARKED_UPDATED, { id: issue.id, status: "in-progress" });
+
+		const list = issues
+			.map((issue) => `- (${issue.id}) [${issue.severity}] ${issue.title}${issue.detail ? `\n      ${issue.detail}` : ""}`)
+			.join("\n");
+		const header =
+			issues.length === 1
+				? "Work on this parked issue now:"
+				: `Work through these ${issues.length} parked issues, in the order listed:`;
+
+		pi.sendUserMessage?.(
+			`${header}\n\n${list}\n\n` +
+				"Close each one with the close_parked_issue tool when its work is genuinely done. " +
+				"If you cannot finish one, say so and leave it in progress rather than closing it.",
+			{ deliverAs: "followUp" },
+		);
 	};
 
 	/** Ask the user what to do with a freshly noticed item. */
@@ -195,10 +233,12 @@ export default function parkedIssues(pi: ExtensionAPI) {
 			const match = findIssue(currentIssues(ctx), params.issue);
 
 			if (match.kind === "not-found") {
-				const open = openIssues(currentIssues(ctx));
+				// Includes dispatched work: hiding it here would be worst exactly when the
+				// agent was sent to close it and got the wording slightly wrong.
+				const outstanding = activeIssues(currentIssues(ctx));
 				const listing =
-					open.length > 0
-						? ` Open issues: ${open.map((issue) => `${issue.id} — ${issue.title}`).join("; ")}`
+					outstanding.length > 0
+						? ` Outstanding issues: ${outstanding.map((issue) => `${issue.id} — ${issue.title}`).join("; ")}`
 						: " The backlog is empty for this session.";
 				return say(`No parked issue matches "${params.issue}".${listing}`);
 			}
@@ -206,7 +246,7 @@ export default function parkedIssues(pi: ExtensionAPI) {
 			if (match.kind === "ambiguous") {
 				const candidates = match.matches.map((issue) => `${issue.id} — ${issue.title}`).join("; ");
 				return say(
-					`"${params.issue}" matches ${match.matches.length} open issues, so nothing was closed. Name one exactly: ${candidates}`,
+					`"${params.issue}" matches ${match.matches.length} outstanding issues, so nothing was closed. Name one exactly: ${candidates}`,
 				);
 			}
 
@@ -261,32 +301,58 @@ export default function parkedIssues(pi: ExtensionAPI) {
 		description: "Review and triage parked issues",
 		handler: async (_args: string, ctx: any) => {
 			const issues = syncBacklog(ctx);
+			// Dispatched work stays listed, so a stalled hand-off can be reset rather than
+			// stranded in a status the menu cannot reach.
+			const active = activeIssues(issues);
 			const open = openIssues(issues);
 
-			if (open.length > 0) {
+			if (active.length > 0) {
+				const rows = active.map((issue) => ({
+					value: issue.id,
+					label: `${issue.status === "in-progress" ? "~" : " "} ${issue.severity}  ${issue.title}`,
+					description: issue.detail,
+				}));
+				if (open.length > 1) {
+					rows.unshift({
+						value: ALL,
+						label: `▶ Work on all ${open.length} now`,
+						description: "Hand every open issue to me in one go",
+					});
+				}
+
 				const picked = await choose(
 					ctx,
-					{ title: `Parked issues (${open.length}) — pick one to act on` },
-					open.map((issue) => ({
-						value: issue.id,
-						label: `${issue.severity}  ${issue.title}`,
-						description: issue.detail,
-					})),
+					{ title: `Parked issues (${active.length}) — pick one to act on` },
+					rows,
 				);
 
-				if (picked) {
-					const action = await choose(ctx, { title: "What should happen to it?" }, [
-						{ value: "resolve", label: "Mark resolved" },
+				if (picked === ALL) {
+					dispatchWork(open);
+				} else if (picked) {
+					const issue = active.find((candidate) => candidate.id === picked);
+					const actions = [
+						{ value: "work", label: "Work on it now", description: "Hand it to me and mark it in progress" },
+						{ value: "resolve", label: "Mark resolved", description: "Close it without doing anything" },
 						{ value: "front", label: "Move to the front" },
 						{ value: "discard", label: "Discard" },
 						{ value: "other", label: "Other…", description: "Tell me what to do about it" },
-					]);
+					];
+					if (issue?.status === "in-progress") {
+						actions.splice(1, 0, {
+							value: "back-to-open",
+							label: "Back to open",
+							description: "It stalled; put it back in the queue",
+						});
+					}
 
+					const action = await choose(ctx, { title: "What should happen to it?" }, actions);
+
+					if (action === "work" && issue) dispatchWork([issue]);
 					if (action === "resolve") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "resolved" });
 					if (action === "discard") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "discarded" });
 					if (action === "front") pi.appendEntry(PARKED_UPDATED, { id: picked, priority: 0 });
+					if (action === "back-to-open") pi.appendEntry(PARKED_UPDATED, { id: picked, status: "open" });
 					if (action === "other") {
-						const issue = open.find((candidate) => candidate.id === picked);
 						const text = issue ? await askText(ctx, `What should happen to this issue?\n\n${issue.title}`) : undefined;
 						if (issue && text) promptAgent(issue, text);
 					}

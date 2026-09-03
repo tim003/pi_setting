@@ -13,7 +13,12 @@ import type { Severity } from "./severity.ts";
 export const PARKED_RECORDED = "parked.recorded";
 export const PARKED_UPDATED = "parked.updated";
 
-export type IssueStatus = "open" | "resolved" | "discarded";
+/**
+ * `in-progress` is work handed to the agent but not finished. It exists because
+ * marking an issue resolved at the moment it is dispatched would let the backlog
+ * claim something is fixed when the turn ended halfway through it.
+ */
+export type IssueStatus = "open" | "in-progress" | "resolved" | "discarded";
 
 export type ParkedIssue = {
 	/** Timestamp id, assigned at capture. Stable across updates. */
@@ -87,6 +92,16 @@ export function sortIssues(issues: readonly ParkedIssue[]): ParkedIssue[] {
 	);
 }
 
+/** Not yet started. This is what `Next` names and what a new session is told about. */
 export function openIssues(issues: readonly ParkedIssue[]): ParkedIssue[] {
 	return sortIssues(issues.filter((issue) => issue.status === "open"));
+}
+
+/**
+ * Everything still outstanding, dispatched or not. The picker lists these: an issue
+ * handed to the agent must stay reachable, or a stalled dispatch becomes a status
+ * nothing can clear.
+ */
+export function activeIssues(issues: readonly ParkedIssue[]): ParkedIssue[] {
+	return sortIssues(issues.filter((issue) => issue.status === "open" || issue.status === "in-progress"));
 }

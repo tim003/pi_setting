@@ -327,7 +327,25 @@ Tell the agent an issue is done or should be dropped and it calls `close_parked_
 
 The durable backlog at `.parked/ISSUES.md` in the project root (gitignored) is **generated** from the session ledger on every sync. Editing it by hand does nothing: the next sync overwrites it. Closing an issue has to go through `close_parked_issue` or `/parked`.
 
-Because the ledger is per-session, an issue parked in one session can only be closed from that session. `close_parked_issue` reports the open issues it can actually see rather than failing silently.
+Because the ledger is per-session, an issue parked in one session can only be closed from that session. `close_parked_issue` reports the outstanding issues it can actually see rather than failing silently.
+
+### Handing work back to the agent
+
+`/parked` can dispatch instead of just bookkeeping, so you no longer close the popup and retype the request.
+
+| action | effect |
+| --- | --- |
+| `▶ Work on all N now` | Top row of the picker; hands every open issue over in one message |
+| `Work on it now` | First action on a single issue |
+| `Mark resolved` | Unchanged — closes the ledger entry **without doing the work** |
+| `Back to open` | Only shown for dispatched work; puts a stalled issue back in the queue |
+
+Dispatched issues move to a third status, **in progress**, rendered as `[~]` under `## In progress`. They are not marked resolved on dispatch, because a turn that ends halfway through the work would otherwise leave a backlog claiming something is fixed when it isn't. The agent is told to close each one with `close_parked_issue` only when the work is genuinely done, and to leave it in progress if it can't finish.
+
+Two consequences worth knowing:
+
+- `_Next:_` and the picker's "work on all" count deliberately name **open** issues only, so neither sends the agent to redo something already underway.
+- Nothing reverts a stalled dispatch automatically. If a turn dies mid-issue, the issue sits in progress until you use `Back to open`.
 
 The `prompt-snippets` extension provides temporary prompt toggles for recurring behaviors such as asking questions, delegating exploration, verifying assumptions, and orchestrator mode. Use its registered Pi commands after `/reload`.
 
