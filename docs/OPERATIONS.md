@@ -183,7 +183,9 @@ A child therefore behaves like a session that can never be asked:
 
 So **granting a project is what lets subagents do real work in it**. Without a grant they can still read, search and run ordinary commands; they just cannot delete or rewrite anything the guard rates high-risk.
 
-The launcher deliberately does **not** set `PI_SUBAGENT_DEPTH`. That variable selects a bash-guard mode which hard-blocks recursive deletes outright, and no project grant can release it, so children could never do the routine work a trusted project exists to permit.
+One thing no grant releases: **a child cannot `git push`.** It may commit and pull freely, since those are local and recoverable and recording work is usually why you delegated it. A push is visible to everyone else the moment it lands, including your VPS deploys, and an unattended session has nobody to ask. Let the child commit; push from the session with a person in it.
+
+This is keyed on the absence of a UI, not on being a subagent, so it covers `pi -p` runs too. `--bash-guard-auto-allow` lifts it for a deliberately autonomous headless run.
 
 Repair by re-running the installer, which recopies the extension and agent definitions:
 

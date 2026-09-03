@@ -34,11 +34,9 @@ export function buildPiCommand(options: BuildPiCommandOptions): string {
   // among them: a child has no UI to approve anything in, so without it the least
   // supervised sessions on the machine were also the only unguarded ones.
   //
-  // It is loaded as an ordinary extension, deliberately not flagged via
-  // PI_SUBAGENT_DEPTH. That flag selects a mode which hard-blocks recursive deletes
-  // outright, and no project grant can release it — children could then never do the
-  // routine work a trusted project exists to permit. On the ordinary path a child
-  // proceeds inside a granted project and blocks everywhere else, for want of a UI.
+  // A child is then an ordinary session that happens to have no UI: it proceeds
+  // inside a granted project, blocks everywhere else for want of anything able to
+  // approve, and cannot push at all.
   const extensionArgs = [
     extensionPathIfInstalled(resolvedAgentDir, "pi-claude-auth"),
     localExtensionIfInstalled(resolvedAgentDir, "bash-guard"),

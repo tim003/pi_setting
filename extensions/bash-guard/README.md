@@ -1,18 +1,19 @@
 # bash-guard (pi extension)
 
-Intercepts agent-issued `bash` tool calls and applies different protection depending on whether
-the session is interactive (main session) or non-interactive (spawned subagent).
+Intercepts agent-issued `bash` tool calls and asks before destructive ones run.
 
-## Modes
+There is one code path, not two. Sessions differ only in whether a UI exists to answer the prompt:
+a session with one gets asked, a session without one is refused unless a trusted project covers the
+command. Subagents are simply the second kind.
 
-Behaviour is determined at registration time via the `PI_SUBAGENT_DEPTH` environment variable.
+> An earlier build branched on `PI_SUBAGENT_DEPTH` into a separate headless mode. Nothing ever set
+> that variable — it was a convention of the removed `pi-subagents` package — so the branch could
+> not run, while reading like the path subagents took. It is gone. Do not reintroduce a mode keyed
+> on a variable no launcher sets.
 
-In this build nothing sets `PI_SUBAGENT_DEPTH`, so bash-guard always registers in main-session
-(interactive prompt) mode. That is intentional: the `cmux-interactive-subagents` provider runs each
-child in a real terminal, so a prompt is answerable there. The subagent mode below is retained for
-headless launchers that do set the variable.
+## Behaviour
 
-### Main session (`PI_SUBAGENT_DEPTH` = 0 or unset) — interactive prompt
+### Interactive prompt
 
 #### Prompt threshold (`PI_BASH_GUARD_LEVEL`)
 
@@ -39,10 +40,25 @@ prompt depends on the threshold above. Catastrophic commands are hard-blocked re
 - If aborted, the tool call is blocked and the model receives a clear reason
 - Remembers recently aborted commands for 60 s to prevent retry loops
 
-### Subagent (`PI_SUBAGENT_DEPTH` ≥ 1) — headless hard-block
+### Sessions with no UI
 
-Spawned subagents have no UI (stdin is `/dev/null`), so prompting is impossible. Instead,
-a focused set of catastrophic/unrecoverable operations is hard-blocked with no user interaction:
+A subagent or a `pi -p` run cannot be asked anything, so a high-risk command is refused unless a
+[trusted project](../../docs/OPERATIONS.md#trusted-projects) covers every path it touches.
+
+One operation is refused outright, before risk rating and before any project grant:
+
+| Pattern | Reason |
+|---|---|
+| `git push` | Visible to everyone else immediately, and cannot be recalled |
+
+Commits and pulls are deliberately allowed — they are local and recoverable, and recording work is
+usually the point of delegating it. Commit in the child; push from the session with a person in it.
+`--bash-guard-auto-allow` lifts this for a deliberately autonomous headless run.
+
+### Catastrophic set
+
+Used as the hard floor when bash-guard is disabled with `/bash-guard`, and never released by a
+project grant:
 
 | Pattern | Reason |
 |---|---|
@@ -60,9 +76,6 @@ a focused set of catastrophic/unrecoverable operations is hard-blocked with no u
 | `terraform destroy` | Infrastructure teardown |
 | `kubectl delete` | Kubernetes resource deletion |
 | `aws s3 rm --recursive` | Bulk S3 deletion |
-| `git commit` | Main-session operation |
-| `git pull` | Main-session operation |
-| `git push` | Main-session operation |
 | `git reset --hard` | Discard all uncommitted changes |
 | `git clean -f` | Delete untracked files |
 | `git reflog expire` | Remove recovery history |

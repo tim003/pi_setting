@@ -9,7 +9,7 @@ import { join } from "node:path";
  * then hand it a bash event. Asserting on block/allow and on whether a popup was
  * raised is the only way to see the trust wiring, which unit tests cannot reach.
  */
-async function activateGuard({ cwd, agentDir, hasUI = true, promptChoice = "abort" }) {
+async function activateGuard({ cwd, agentDir, hasUI = true, promptChoice = "abort", flagValues = {} }) {
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	const { default: activate } = await import(`../index.ts?t=${Math.random()}`);
 
@@ -22,10 +22,17 @@ async function activateGuard({ cwd, agentDir, hasUI = true, promptChoice = "abor
 	const pi = {
 		on: (event, handler) => handlers.set(event, handler),
 		registerCommand: (name, spec) => commands.set(name, spec),
-		registerFlag: (name, spec) => flags.set(`--${name}`, spec.default),
+		// Keyed exactly as registered, because that is what Pi does: getFlag("x") reads a
+		// flag registered as "x". A harness that also answered to "--x" would agree with
+		// broken code and hide it.
+		registerFlag: (name, spec) => flags.set(name, spec.default),
 		getFlag: (name) => flags.get(name),
 	};
 	activate(pi);
+	for (const [name, value] of Object.entries(flagValues)) {
+		if (!flags.has(name)) throw new Error(`test set unregistered flag: ${name}`);
+		flags.set(name, value);
+	}
 
 	const theme = {
 		fg: (_c, t) => t,
@@ -149,6 +156,67 @@ test("choosing trust at the prompt grants the project and runs the command", asy
 	const second = await guard.bash("rm -rf build");
 	assert.equal(second, undefined);
 	assert.equal(guard.promptCount(), 1, "expected the grant to silence the second command");
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+/**
+ * A push is visible to everyone else the moment it lands, and an unattended session
+ * has nobody to ask. Commits stay allowed: they are local and recoverable, and
+ * recording work is usually the point of delegating it.
+ */
+test("a session with no UI cannot push, even inside a trusted project", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const granting = await activateGuard({ cwd: project, agentDir: join(dir, "agent") });
+	await granting.command("bash-guard").handler("trust", granting.ctx);
+
+	const child = await activateGuard({ cwd: project, agentDir: join(dir, "agent"), hasUI: false });
+	const result = await child.bash("git push origin main");
+	assert.ok(result?.block, "expected an unattended push to be refused");
+	assert.match(result.reason, /push/i);
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("--bash-guard-auto-allow lifts the unattended push block", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const guard = await activateGuard({
+		cwd: project,
+		agentDir: join(dir, "agent"),
+		hasUI: false,
+		flagValues: { "bash-guard-auto-allow": true },
+	});
+	assert.equal(await guard.bash("git push origin main"), undefined);
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("a session with no UI can still commit and pull", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const child = await activateGuard({ cwd: project, agentDir: join(dir, "agent"), hasUI: false });
+	assert.equal(await child.bash("git commit -m 'work'"), undefined);
+	assert.equal(await child.bash("git pull"), undefined);
+
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("an interactive session pushes without interruption", async () => {
+	const dir = scratch();
+	const project = join(dir, "project");
+	mkdirSync(project, { recursive: true });
+
+	const guard = await activateGuard({ cwd: project, agentDir: join(dir, "agent") });
+	assert.equal(await guard.bash("git push origin main"), undefined);
+	assert.equal(guard.promptCount(), 0, "a person at the keyboard is the approval");
 
 	rmSync(dir, { recursive: true, force: true });
 });

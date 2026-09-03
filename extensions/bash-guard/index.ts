@@ -377,16 +377,10 @@ async function promptRunOrAbort(
 	return choice ?? "abort";
 }
 
-// PI_SUBAGENT_DEPTH is 0 (or unset) in the main session and >= 1 in spawned subagent processes.
-// Behaviour branches on this: interactive prompting in the main session, headless hard-block
-// for catastrophic operations in subagents (where stdin is /dev/null and no UI is available).
-const _subagentDepth = Number(process.env.PI_SUBAGENT_DEPTH ?? "0");
-const _isSubagent = Number.isFinite(_subagentDepth) && _subagentDepth >= 1;
-
-// Hard-block patterns for subagent (headless) mode. Criteria: unrecoverable by default AND
-// unlikely to be intentional in an automated context. Fewer false positives over broad coverage —
-// the interactive prompt handles the rest for main sessions.
-export const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
+// Patterns treated as catastrophic: unrecoverable by default AND unlikely to be
+// intentional. Fewer false positives over broad coverage — the interactive prompt
+// handles everything else.
+export const CATASTROPHIC: Array<{ pattern: RegExp; reason: string }> = [
 	// Recursive deletion
 	{ pattern: /(?<!\bgit\s+)\brm\b[^#\n]*\s-(?:[a-zA-Z]*[rR]|-\brecursive\b)/, reason: "recursive delete (rm -r / -rf / -Rf)" },
 	// Privilege escalation
@@ -409,30 +403,20 @@ export const HEADLESS_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
 	{ pattern: /\bkubectl\s+delete\b/, reason: "Kubernetes resource deletion" },
 	{ pattern: /\baws\s+s3\s+rm\b[^#\n]*--recursive/, reason: "bulk S3 deletion (aws s3 rm --recursive)" },
 	// Destructive git operations
-	{ pattern: /\bgit\s+commit\b/, reason: "git commit (commits are main-session operations)" },
-	{ pattern: /\bgit\s+pull\b/, reason: "git pull (pulls are main-session operations)" },
-	{ pattern: /\bgit\s+push\b/, reason: "git push (pushes are main-session operations)" },
 	{ pattern: /\bgit\s+reset\b[^#\n]*--hard\b/, reason: "discard all uncommitted changes (git reset --hard)" },
 	{ pattern: /\bgit\s+clean\b[^#\n]*-[a-zA-Z]*f/, reason: "delete untracked files (git clean -f)" },
 	{ pattern: /\bgit\s+reflog\s+expire\b/, reason: "expire reflog (removes recovery history)" },
 	{ pattern: /\bgit\s+gc\b[^#\n]*--prune\b/, reason: "prune unreachable objects (git gc --prune)" },
 ];
 
-// Subset of HEADLESS_BLOCKED used as the hard-block floor when bash-guard is
-// disabled in an interactive (main) session. The user explicitly opts into
-// autonomy here, so routine git operations (commit/pull/push) are allowed
-// through; only truly catastrophic / non-recoverable patterns remain blocked.
-export const MAIN_DISABLED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = HEADLESS_BLOCKED.filter(
-	({ pattern }) => {
-		const src = pattern.source;
-		return !(
-			src.includes("git\\s+commit") ||
-			src.includes("git\\s+pull") ||
-			// Keep `git push --force` blocked but allow plain `git push`.
-			src === "\\bgit\\s+push\\b"
-		);
-	},
-);
+/**
+ * The floor when bash-guard is disabled in an interactive session.
+ *
+ * Now exactly the catastrophic set. It used to subtract routine git operations,
+ * but those were listed only to restrain a subagent mode that never ran, so the
+ * subtraction had nothing left to remove.
+ */
+export const MAIN_DISABLED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = CATASTROPHIC;
 
 // Masking lives in src/mask.ts. Re-exported so the floor tests, which exercise
 // this module's pattern lists, can reach it from one place.
@@ -462,27 +446,18 @@ function shouldPrompt(risk: Risk): boolean {
 	return risk.severity === "high" || _promptOnMedium;
 }
 
-export default function (pi: ExtensionAPI) {
-	if (_isSubagent) {
-		// Subagent mode: hard-block catastrophic operations, no prompting.
-		pi.on("tool_call", async (event) => {
-			if (!isToolCallEventType("bash", event)) return;
-			const command = event.input.command;
-			const reason = firstBlockedReason(command, HEADLESS_BLOCKED);
-			if (reason) {
-				return {
-					block: true,
-					reason:
-						`Blocked by bash-guard: ${reason}. ` +
-						"This is a non-interactive subagent session — catastrophic operations are not permitted. " +
-						"Propose a safer alternative or ask the parent agent to confirm with the user.",
-				};
-			}
-		});
-		return;
-	}
+/**
+ * Refused outright when nothing can approve.
+ *
+ * Deliberately tiny. A blanket block for unattended sessions would defeat trusted
+ * projects, which exist so subagents can do routine work; this names only the
+ * operation whose effect leaves the machine and cannot be taken back.
+ */
+const UNATTENDED_BLOCKED: Array<{ pattern: RegExp; reason: string }> = [
+	{ pattern: /\bgit\s+push\b/, reason: "a push is visible to everyone else immediately and cannot be recalled" },
+];
 
-	// Main session mode: interactive prompting.
+export default function (pi: ExtensionAPI) {
 	pi.registerFlag("bash-guard-auto-allow", {
 		description: "If set, bash-guard will not block when no UI is available (non-interactive modes).",
 		type: "boolean",
@@ -520,7 +495,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (event, ctx) => {
 		showTrustBadge(ctx, storePath);
-		if (event.reason === "startup" && pi.getFlag("--bash-guard-disabled") === true) {
+		if (event.reason === "startup" && pi.getFlag("bash-guard-disabled") === true) {
 			disabled = true;
 			const { theme } = ctx.ui;
 			const badge = theme.bg(
@@ -609,6 +584,22 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
+		// Before risk rating, because a plain push rates medium and would otherwise be
+		// waved through, and before the trust check, because no project grant should
+		// license an unattended session to publish.
+		if (!ctx.hasUI && !pi.getFlag("bash-guard-auto-allow")) {
+			const unattendedReason = firstBlockedReason(command, UNATTENDED_BLOCKED);
+			if (unattendedReason) {
+				return {
+					block: true,
+					reason:
+						`Blocked by bash-guard: ${unattendedReason}. ` +
+						"This session has no UI, so nobody can approve it. Commit the work and let " +
+						"the parent session push, or ask the user to push.",
+				};
+			}
+		}
+
 		const risk = analyzeBashCommand(command);
 		if (!risk) return;
 
@@ -631,7 +622,7 @@ export default function (pi: ExtensionAPI) {
 			};
 		}
 
-		if (!ctx.hasUI && pi.getFlag("--bash-guard-auto-allow")) {
+		if (!ctx.hasUI && pi.getFlag("bash-guard-auto-allow")) {
 			// Non-interactive mode: allow when explicitly requested.
 			return;
 		}

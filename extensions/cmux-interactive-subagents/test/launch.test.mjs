@@ -87,14 +87,6 @@ test("buildPiCommand still launches when bash-guard is not installed", () => {
   assert.match(command, /-e '\/ext\/child-helper\.ts'/, "the child helper must still load");
 });
 
-test("a child is not flagged as a subagent to bash-guard", () => {
-  // PI_SUBAGENT_DEPTH would switch bash-guard to a mode that hard-blocks recursive
-  // deletes unconditionally, which no project grant can release. Children must run
-  // the ordinary path: trusted project proceeds, everything else blocks for want of
-  // a UI to approve in.
-  assert.doesNotMatch(childCommand(agentDirWithGuard()), /PI_SUBAGENT_DEPTH/);
-});
-
 test("normalizeMessageForTui makes multiline steer safe as one submitted message", () => {
   assert.equal(normalizeMessageForTui("line one\nline two\n\nline three"), "line one\\nline two\\n\\nline three");
 });
