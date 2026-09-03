@@ -1,6 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import { Container, SelectList, Text } from "@earendil-works/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,6 +20,7 @@ import {
   surfaceExists,
 } from "./src/cmux.ts";
 import { closesTabOnExit, fleetRows } from "./src/fleet.ts";
+import { askText, choose } from "./src/ui/select.ts";
 import { buildPiCommand, normalizeMessageForTui, scriptWithExitTrap } from "./src/launch.ts";
 import { makeChildSessionPath, readFinalAssistantMessage, readLoadout, writeLoadout, type ChildLoadout } from "./src/session.ts";
 import { settingsOverride } from "./src/settings.ts";
@@ -304,42 +304,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  /**
-   * Children are invisible by design, so this is the only way to look at one.
-   * Focus is requested here and nowhere else: a spawn that stole the screen
-   * would interrupt whatever the human was typing.
-   */
-  async function pick(ctx: any, title: string, items: { label: string; value: string; description?: string }[]) {
-    if (!ctx?.hasUI) return null;
-    return ctx.ui.custom<string | null>(
-      (tui: any, theme: any, _kb: any, done: (r: string | null) => void) => {
-        const container = new Container();
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-        container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
-        const list = new SelectList(items, Math.min(items.length, 10), {
-          selectedPrefix: (t: string) => theme.fg("accent", t),
-          selectedText: (t: string) => theme.fg("accent", t),
-          description: (t: string) => theme.fg("muted", t),
-          scrollInfo: (t: string) => theme.fg("dim", t),
-          noMatch: (t: string) => theme.fg("warning", t),
-        });
-        list.onSelect = (item: any) => done(String(item.value));
-        list.onCancel = () => done(null);
-        container.addChild(list);
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-        return {
-          render: (w: number) => container.render(w),
-          invalidate: () => container.invalidate(),
-          handleInput: (data: string) => {
-            list.handleInput(data);
-            tui.requestRender();
-          },
-        };
-      },
-      { overlay: true },
-    );
-  }
-
   pi.registerCommand("fleet", {
     description: "Show, steer or close the subagents running in background tabs",
     handler: async (_args: string, ctx: any) => {
@@ -348,9 +312,15 @@ export default function (pi: ExtensionAPI) {
       const rows = fleetRows(Array.from(children.values()), Date.now());
       if (rows.length === 0) return "No subagents in this session.";
 
-      const name = await pick(
+      // Children are invisible by design, so this popup is the only way to
+      // reach one. It uses the shared UI lock, so it queues behind other
+      // overlays instead of drawing over them.
+      const name = await choose(
         ctx,
-        `Subagents (${rows.length})`,
+        {
+          title: `Subagents (${rows.length})`,
+          body: "Waiting children are listed first; they are blocked until you answer.",
+        },
         rows.map((r) => ({ label: r.label, value: r.name, description: r.description })),
       );
       if (!name) return undefined;
@@ -366,7 +336,11 @@ export default function (pi: ExtensionAPI) {
         actions.push({ label: "Nothing to show", value: "none", description: "This child no longer holds a tab" });
       }
 
-      const action = await pick(ctx, `${child.name} (${child.status})`, actions);
+      const action = await choose(
+        ctx,
+        { title: `${child.name} (${child.status})`, body: child.task },
+        actions,
+      );
       if (!action || action === "none") return undefined;
 
       if (action === "show") {
@@ -378,8 +352,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (action === "message") {
-        const text = ctx.hasUI ? await ctx.ui.editor(`Message for ${child.name}`) : "";
-        const message = typeof text === "string" ? text.trim() : "";
+        const message = (await askText(ctx, `Message for ${child.name}`)) ?? "";
         if (!message) return undefined;
         sendCommand(child.surface, normalizeMessageForTui(message));
         child.status = "running";
