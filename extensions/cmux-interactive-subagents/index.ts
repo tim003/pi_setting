@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { Container, SelectList, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -8,14 +9,18 @@ import { homedir } from "node:os";
 import { discoverAgents, type AgentDefinition } from "./src/agents.ts";
 import { chooseMessageMode, resolveResumeSurface, validateLaunch, type ChildStatus } from "./src/core.ts";
 import {
+  callerPane,
   childScriptPath,
+  closeSurface,
   cmuxUnavailableText,
   createSurface,
+  focusSurface,
   hasCmux,
   sendCommand,
   sendLongCommand,
   surfaceExists,
 } from "./src/cmux.ts";
+import { closesTabOnExit, fleetRows } from "./src/fleet.ts";
 import { buildPiCommand, normalizeMessageForTui, scriptWithExitTrap } from "./src/launch.ts";
 import { makeChildSessionPath, readFinalAssistantMessage, readLoadout, writeLoadout, type ChildLoadout } from "./src/session.ts";
 import { settingsOverride } from "./src/settings.ts";
@@ -87,6 +92,14 @@ export default function (pi: ExtensionAPI) {
   const children = new Map<string, ChildRecord>();
   let watcher: NodeJS.Timeout | null = null;
 
+  // Resolved once and reused: a child tab must land in this session's pane.
+  // Left null when cmux cannot tell us, which falls back to a split.
+  let cachedPane: string | null = null;
+  function parentPane(): string | null {
+    if (cachedPane === null) cachedPane = callerPane();
+    return cachedPane;
+  }
+
   function listAgents(ctx: any): AgentDefinition[] {
     return discoverAgents(ctx.cwd, agentDir());
   }
@@ -128,6 +141,12 @@ export default function (pi: ExtensionAPI) {
           const prefix = child.status === "failed" ? `Subagent ${child.name} failed` : `Subagent ${child.name} finished`;
           const error = exit.errorMessage ? `\n\nError: ${exit.errorMessage}` : "";
           deliverToParent(`${prefix}.\n\n${child.lastResult || "(no final assistant message)"}${error}`);
+          // The result is now in the parent and the transcript is on disk, so
+          // the tab has nothing left to show. Give it back.
+          if (closesTabOnExit(child.status)) {
+            closeSurface(child.surface);
+            child.surface = "";
+          }
         } catch {
           // Leave unreadable exit files for inspection.
         }
@@ -204,7 +223,7 @@ export default function (pi: ExtensionAPI) {
       };
       writeLoadout(sessionFile, loadout);
 
-      const surface = createSurface(validation.name);
+      const surface = createSurface(validation.name, parentPane());
       sendLaunchCommand(surface, loadout, sessionFile, fullTask(agent, validation.task), validation.name);
 
       const child: ChildRecord = {
@@ -268,7 +287,7 @@ export default function (pi: ExtensionAPI) {
         name: child.name,
         surface: child.surface,
         surfaceExists,
-        createSurface,
+        createSurface: (childName) => createSurface(childName, parentPane()),
       });
       child.surface = resumeSurface.surface;
       sendLaunchCommand(child.surface, loadout, child.sessionFile, message, `${child.name}-resume`);
@@ -282,6 +301,94 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme) {
       return new Text(theme.fg("toolTitle", "subagent_message ") + theme.fg("accent", String(args.name ?? "")), 0, 0);
+    },
+  });
+
+  /**
+   * Children are invisible by design, so this is the only way to look at one.
+   * Focus is requested here and nowhere else: a spawn that stole the screen
+   * would interrupt whatever the human was typing.
+   */
+  async function pick(ctx: any, title: string, items: { label: string; value: string; description?: string }[]) {
+    if (!ctx?.hasUI) return null;
+    return ctx.ui.custom<string | null>(
+      (tui: any, theme: any, _kb: any, done: (r: string | null) => void) => {
+        const container = new Container();
+        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+        container.addChild(new Text(theme.fg("accent", theme.bold(title)), 1, 0));
+        const list = new SelectList(items, Math.min(items.length, 10), {
+          selectedPrefix: (t: string) => theme.fg("accent", t),
+          selectedText: (t: string) => theme.fg("accent", t),
+          description: (t: string) => theme.fg("muted", t),
+          scrollInfo: (t: string) => theme.fg("dim", t),
+          noMatch: (t: string) => theme.fg("warning", t),
+        });
+        list.onSelect = (item: any) => done(String(item.value));
+        list.onCancel = () => done(null);
+        container.addChild(list);
+        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+        return {
+          render: (w: number) => container.render(w),
+          invalidate: () => container.invalidate(),
+          handleInput: (data: string) => {
+            list.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      },
+      { overlay: true },
+    );
+  }
+
+  pi.registerCommand("fleet", {
+    description: "Show, steer or close the subagents running in background tabs",
+    handler: async (_args: string, ctx: any) => {
+      if (!hasCmux()) return cmuxUnavailableText();
+      pollChildren();
+      const rows = fleetRows(Array.from(children.values()), Date.now());
+      if (rows.length === 0) return "No subagents in this session.";
+
+      const name = await pick(
+        ctx,
+        `Subagents (${rows.length})`,
+        rows.map((r) => ({ label: r.label, value: r.name, description: r.description })),
+      );
+      if (!name) return undefined;
+      const child = children.get(name);
+      if (!child) return `Unknown subagent ${name}.`;
+
+      const actions: { label: string; value: string; description?: string }[] = [];
+      if (child.surface) {
+        actions.push({ label: "Show it", value: "show", description: "Bring its tab forward" });
+        actions.push({ label: "Message it", value: "message", description: "Type into the running child" });
+        actions.push({ label: "Close its tab", value: "close", description: "The child keeps running" });
+      } else {
+        actions.push({ label: "Nothing to show", value: "none", description: "This child no longer holds a tab" });
+      }
+
+      const action = await pick(ctx, `${child.name} (${child.status})`, actions);
+      if (!action || action === "none") return undefined;
+
+      if (action === "show") {
+        const pane = parentPane();
+        if (!pane) return "cmux did not report a pane, so the tab cannot be brought forward.";
+        return focusSurface(child.surface, pane)
+          ? `Showing ${child.name}.`
+          : `Could not show ${child.name}; its tab may be gone.`;
+      }
+
+      if (action === "message") {
+        const text = ctx.hasUI ? await ctx.ui.editor(`Message for ${child.name}`) : "";
+        const message = typeof text === "string" ? text.trim() : "";
+        if (!message) return undefined;
+        sendCommand(child.surface, normalizeMessageForTui(message));
+        child.status = "running";
+        return `Sent to ${child.name}.`;
+      }
+
+      closeSurface(child.surface);
+      child.surface = "";
+      return `Closed the tab for ${child.name}; it keeps running.`;
     },
   });
 }

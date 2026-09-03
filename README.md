@@ -122,7 +122,7 @@ pi install npm:pi-chrome
 
 `pi-chrome` needs a manual step that no script can do for you — see [`docs/OPERATIONS.md`](docs/OPERATIONS.md#chrome-profile-control-pi-chrome).
 
-The active `subagent` provider is the local `extensions/cmux-interactive-subagents/` extension. It is self-contained and needs no subagent package.
+The active `subagent` provider is the local `extensions/cmux-interactive-subagents/` extension. It is self-contained and needs no subagent package. Children run in background cmux tabs that close themselves when done; `/fleet` brings one forward — see [`docs/OPERATIONS.md`](docs/OPERATIONS.md#rotating-a-child-into-view-fleet).
 
 ## Maintenance note
 

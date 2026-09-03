@@ -170,6 +170,30 @@ Requirements:
 - `~/.pi/agent/agents/` must contain the six agent definitions; without them `subagents_list` is empty.
 - Keep `pi-claude-auth` installed; the local child launcher explicitly loads it so Anthropic child Pi processes inherit Claude Code auth while other extensions remain isolated.
 
+### Where a child appears
+
+A child runs in its own **background tab inside the parent's pane** — a real terminal that simply is not the selected one. It is created with `new-surface --focus false`, so spawning never takes the screen and never touches your layout.
+
+This replaced `new-split right`, which gave every child a slice of the window. Ten children meant ten splits, the parent session squeezed into an unusable column, and nothing ever cleaned them up. Tabs cost one entry in the tab bar instead.
+
+When a child finishes or fails, its tab closes automatically. Both cases close because the result — including the error text — has already been delivered to the parent, and the full transcript stays in the child's session file under `~/.pi/agent/sessions/cmux-interactive-subagents/`.
+
+### Rotating a child into view: `/fleet`
+
+Because children are invisible, `/fleet` is how you reach one. It lists every child in the session with its status, agent, age and task, waiting children first, since those are blocked on you.
+
+| action | effect |
+| --- | --- |
+| Show it | Brings that child's tab forward. |
+| Message it | Types into the running child, same as `subagent_message`. |
+| Close its tab | Reclaims the tab; **the child keeps running** and still reports back. |
+
+Only `/fleet` ever asks for focus. Spawning, finishing and closing never do — a child that grabbed the screen mid-turn would interrupt whatever you were typing.
+
+A child that has already exited shows no actions: its tab is gone, so there is nothing to rotate to. Its result is in the parent conversation and its transcript on disk.
+
+There is deliberately **no cap** on children. A tab is invisible and costs almost nothing, and any cap would mean overflow children run without a tab — which makes them unshowable and unsteerable forever, since a process with no terminal cannot be given one later.
+
 ### What a child is allowed to do
 
 Children launch with `--no-extensions`, so they get only what the launcher names: `pi-claude-auth`, **`bash-guard`**, and the child helper. bash-guard is on that list because a child has no UI to approve anything in — without it the least supervised sessions on the machine were also the only unguarded ones, and a subagent would run `rm -rf` unblocked.
