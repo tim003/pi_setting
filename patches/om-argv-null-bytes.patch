@@ -1,0 +1,120 @@
+From c8af21d1ce6e82b4812f9d81b24ae72e9e983e03 Mon Sep 17 00:00:00 2001
+From: tim003 <twong03@gmail.com>
+Date: Fri, 4 Sep 2026 02:29:42 +0800
+Subject: [PATCH] Strip NUL bytes from worker argv so a binary-tainted chunk
+ cannot kill the observer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+buildWorkerArgv passes the kickoff prompt to spawn() as an argv element,
+and that prompt embeds a transcript chunk verbatim. A chunk can carry a
+NUL byte whenever a recorded command touched binary data — grepping a
+compiled artifact is enough. Node refuses NUL in argv, so spawn() threw
+
+  TypeError: The argument 'args[15]' must be a string without null bytes
+
+before the worker started. The observer never ran, produced no result,
+and the failure repeated on every trigger until the offending chunk aged
+out of the window — observational memory was silently dead in between.
+
+Sanitise every argv element. Dropping the byte loses nothing, since NUL
+is not meaningful text, and it fixes the consolidator on the same path.
+
+Five regression tests, including one that spawns for real and would have
+reproduced the original TypeError.
+---
+ src/spawn/launch.ts           | 13 +++++++++-
+ tests/argv-null-bytes.test.ts | 49 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 61 insertions(+), 1 deletion(-)
+ create mode 100644 tests/argv-null-bytes.test.ts
+
+diff --git a/src/spawn/launch.ts b/src/spawn/launch.ts
+index c7c6f57..53cb08f 100644
+--- a/src/spawn/launch.ts
++++ b/src/spawn/launch.ts
+@@ -37,6 +37,17 @@ export function resolvePiBinary(): { command: string; baseArgs: string[] } {
+ 	return { command: "pi", baseArgs: [] };
+ }
+ 
++/**
++ * A transcript chunk reaches the worker as an argv element, and a chunk can carry a
++ * NUL byte whenever a recorded command touched binary data — a grep over a compiled
++ * artifact is enough. Node rejects NUL in argv, so an unsanitised prompt throws inside
++ * spawn() before the worker starts, and observational memory stays dead until the
++ * offending chunk ages out. Dropping the byte loses nothing: it is not meaningful text.
++ */
++function withoutNullBytes(value: string): string {
++	return value.includes("\u0000") ? value.replaceAll("\u0000", "") : value;
++}
++
+ export function buildWorkerArgv(opts: {
+ 	model: ConfiguredModel;
+ 	sessionName: string;
+@@ -58,7 +69,7 @@ export function buildWorkerArgv(opts: {
+ 	args.push("-e", opts.agentExtensionPath ?? AGENT_EXTENSION_PATH);
+ 	args.push("-n", opts.sessionName);
+ 	args.push("-p", opts.kickoffPrompt);
+-	return [pi.command, ...args];
++	return [pi.command, ...args].map(withoutNullBytes);
+ }
+ 
+ export type WorkerExit = { code: number | null; signal: NodeJS.Signals | null; stderr: string };
+diff --git a/tests/argv-null-bytes.test.ts b/tests/argv-null-bytes.test.ts
+new file mode 100644
+index 0000000..27ef038
+--- /dev/null
++++ b/tests/argv-null-bytes.test.ts
+@@ -0,0 +1,49 @@
++import { describe, expect, it } from "vitest";
++import { spawn } from "node:child_process";
++
++import { buildWorkerArgv } from "../src/spawn/launch.js";
++
++/**
++ * A transcript chunk is embedded verbatim in the kickoff prompt, and a chunk can
++ * legitimately contain a NUL byte — any bash output that grepped a binary, a core
++ * dump, or a compiled artifact carries one. Node refuses to spawn with a NUL in
++ * argv, so an unsanitised prompt kills the worker before it starts and silently
++ * disables observational memory until the chunk ages out of the window.
++ */
++const model = { provider: "anthropic", id: "claude-haiku-4-5", thinking: "low" } as never;
++
++function argvFor(prompt: string): string[] {
++	return buildWorkerArgv({ model, sessionName: "obs-run", kickoffPrompt: prompt });
++}
++
++describe("buildWorkerArgv", () => {
++	it("strips NUL bytes from the kickoff prompt", () => {
++		const argv = argvFor("before\u0000after");
++		expect(argv.some((arg) => arg.includes("\u0000"))).toBe(false);
++		expect(argv.at(-1)).toBe("beforeafter");
++	});
++
++	it("keeps the surrounding prompt text intact", () => {
++		const argv = argvFor("Current local time: 2026-09-04\u0000\u0000 rest of chunk");
++		expect(argv.at(-1)).toBe("Current local time: 2026-09-04 rest of chunk");
++	});
++
++	it("leaves a clean prompt untouched", () => {
++		const prompt = "a normal chunk\nwith newlines\tand tabs";
++		expect(argvFor(prompt).at(-1)).toBe(prompt);
++	});
++
++	it("sanitises every argv element, not just the prompt", () => {
++		const argv = buildWorkerArgv({ model, sessionName: "obs\u0000run", kickoffPrompt: "clean" });
++		expect(argv.some((arg) => arg.includes("\u0000"))).toBe(false);
++	});
++
++	it("produces argv that node will actually accept", () => {
++		const argv = argvFor("poisoned\u0000prompt");
++		const [, ...rest] = argv;
++		// The real failure was thrown synchronously by spawn(); assert it is gone.
++		const child = spawn("true", rest, { stdio: "ignore" });
++		child.kill();
++		expect(child.pid === undefined || typeof child.pid === "number").toBe(true);
++	});
++});
+-- 
+2.46.0
+

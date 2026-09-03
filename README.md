@@ -54,7 +54,7 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 - `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, extension dependencies, and the local `pi-claude-auth` CLI-version patch.
 - `scripts/patch-pi-claude-auth-cli-version.sh` — patch installed `pi-claude-auth` so normal `pi` startup derives the Claude Code billing/user-agent version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset.
 - `scripts/test-pi-claude-auth-patch.sh` — regression test for the local `pi-claude-auth` patch.
-- `scripts/reapply-om-coverage-gap-fix.sh` — reapply the local `pi-observational-memory` observer-coverage fix from `patches/om-observer-coverage-gap.patch` after `pi update` resets the clone. See [docs/MAINTENANCE.md](docs/MAINTENANCE.md#local-package-fixes).
+- `scripts/reapply-om-local-fixes.sh` — reapply the local `pi-observational-memory` fixes (observer coverage spans, NUL bytes in worker argv) from `patches/` after `pi update` resets the clone. See [docs/MAINTENANCE.md](docs/MAINTENANCE.md#local-package-fixes).
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
 ### Package-installed extensions and skills

@@ -7,33 +7,38 @@ Update, rollback, and troubleshooting notes for this Pi setup.
 ```bash
 pi update --extensions
 ./scripts/patch-pi-claude-auth-cli-version.sh
-./scripts/reapply-om-coverage-gap-fix.sh
+./scripts/reapply-om-local-fixes.sh
 ```
 
 Then run `/reload` inside Pi or restart Pi.
 
 `pi update --extensions` touches installed packages and can overwrite the local `pi-claude-auth` CLI-version patch. Re-run the patch script afterwards. It does not overwrite the local extensions, agents, or skills this repo installs.
 
-Git-installed packages are updated with `git reset --hard @{upstream}`, which discards local commits. `pi-observational-memory` carries one — see [local package fixes](#local-package-fixes) — so re-run its script too. Both scripts are idempotent and safe to run when nothing needs doing.
+Git-installed packages are updated with `git reset --hard @{upstream}`, which discards local commits. `pi-observational-memory` carries two — see [local package fixes](#local-package-fixes) — so re-run its script too. Both scripts are idempotent and safe to run when nothing needs doing.
 
 ## Local package fixes
 
-`pi-observational-memory` has a local fix that is not upstream: observer coverage is tracked as spans so a failed observer's slice is retried instead of being buried by a later observer's committed watermark. Without it, a killed observer silently loses that stretch of conversation from memory, permanently.
+`pi-observational-memory` carries two fixes that are not upstream. Each lives on its own local branch, with a patch file as the durable copy, and they are applied in the order below because each was cut on top of the one before it.
 
-The durable copy is `patches/om-observer-coverage-gap.patch`; the clone also keeps it on the local branch `fix/observer-coverage-gap`.
+| fix | branch | patch | why |
+| --- | --- | --- | --- |
+| Observer coverage spans | `fix/observer-coverage-gap` | `patches/om-observer-coverage-gap.patch` | Coverage is tracked as spans so a failed observer's slice is retried instead of being buried by a later observer's committed watermark. Without it, a killed observer silently loses that stretch of conversation from memory, permanently. |
+| NUL bytes in worker argv | `fix/observer-argv-null-bytes` | `patches/om-argv-null-bytes.patch` | The kickoff prompt embeds a transcript chunk verbatim and reaches the worker as an argv element. Any recorded command that touched binary data can leave a NUL byte in that chunk, and Node refuses NUL in argv, so `spawn()` throws `The argument 'args[15]' must be a string without null bytes` before the worker starts. The observer then fails on every trigger until the chunk ages out. |
 
 ```bash
-./scripts/reapply-om-coverage-gap-fix.sh
+./scripts/reapply-om-local-fixes.sh
 ```
 
-The script replays the branch onto the new upstream tip, and rebuilds the branch from the patch when the clone is fresh and has no such branch. It refuses to run over an uncommitted working tree rather than stashing someone's work, and aborts cleanly if upstream has changed enough that the fix no longer applies — at which point check whether upstream fixed it properly, and drop the patch if so.
+The script replays each branch onto the new upstream tip, and rebuilds a branch from its patch when the clone is fresh and has no such branch. It refuses to run over an uncommitted working tree rather than stashing someone's work, and aborts cleanly if upstream has changed enough that the fix no longer applies — at which point check whether upstream fixed it properly, and drop the patch if so.
 
-After changing the fix, refresh the patch so the repo stays the source of truth:
+After changing a fix, refresh its patch so the repo stays the source of truth:
 
 ```bash
 cd ~/.pi/agent/git/github.com/amosblomqvist/pi-observational-memory
 git format-patch -1 fix/observer-coverage-gap --stdout \
   > ~/Documents/Obsidian_note/Pi/pi_setting/patches/om-observer-coverage-gap.patch
+git format-patch -1 fix/observer-argv-null-bytes --stdout \
+  > ~/Documents/Obsidian_note/Pi/pi_setting/patches/om-argv-null-bytes.patch
 ```
 
 ## Update Pi itself
