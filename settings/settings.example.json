@@ -13,30 +13,6 @@
     "git:github.com/amosblomqvist/pi-observational-memory",
     "npm:pi-chrome"
   ],
-  "subagents": {
-    "defaultModel": "anthropic/claude-sonnet-4-6",
-    "agentOverrides": {
-      "worker": {
-        "model": "anthropic/claude-sonnet-4-6"
-      },
-      "reviewer": {
-        "model": "anthropic/claude-opus-5",
-        "thinking": "high"
-      },
-      "delegate": {
-        "model": "anthropic/claude-haiku-4-5"
-      },
-      "scout": {
-        "model": "anthropic/claude-haiku-4-5"
-      },
-      "oracle": {
-        "model": "anthropic/claude-opus-5"
-      },
-      "researcher": {
-        "model": "anthropic/claude-sonnet-4-6"
-      }
-    }
-  },
   "observational-memory": {
     "models": {
       "observer": {

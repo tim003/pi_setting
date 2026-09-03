@@ -2,6 +2,7 @@
 name: worker
 description: Implementation agent for normal tasks and approved oracle handoffs
 aliases: developer, coder, implementer, develop
+model: anthropic/claude-sonnet-4-6
 thinking: high
 systemPromptMode: replace
 inheritProjectContext: true

@@ -248,7 +248,37 @@ Repair by re-running the installer, which recopies the extension and agent defin
 ./scripts/install-packages.sh
 ```
 
-Available agents (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) come from `~/.pi/agent/agents/`. Add a project-local override in `<project>/.pi/agents/`, and set model/thinking per agent under `subagents.agentOverrides` in `settings.json`.
+Available agents (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) come from `~/.pi/agent/agents/`, tracked in this repo under `agents/`. Add a project-local override in `<project>/.pi/agents/`.
+
+### Which model a role runs on
+
+Model and thinking live in the agent's own markdown frontmatter, so a role is understandable in one read:
+
+```yaml
+---
+name: reviewer
+model: openai-codex/gpt-5.6-terra
+thinking: high
+---
+```
+
+| role | model | why |
+| --- | --- | --- |
+| `worker` | `anthropic/claude-sonnet-4-6` | main implementation agent |
+| `reviewer` | `openai-codex/gpt-5.6-terra` | deliberately a different provider from `worker`, so review does not inherit the worker's blind spots |
+| `oracle` | `anthropic/claude-opus-5` | high-context role; Claude offers 1M context against Codex's 272K |
+| `researcher` | `anthropic/claude-sonnet-4-6` | web research and synthesis |
+| `scout`, `delegate` | `anthropic/claude-haiku-4-5` | cheap, frequent, short-lived |
+
+Resolution order, highest first (`index.ts:235`):
+
+1. an explicit `model` argument on the `subagent` call
+2. `model:` in the agent's markdown frontmatter
+3. nothing — the child inherits pi's own default model
+
+There is deliberately no `settings.json` layer. It existed as `subagents.agentOverrides` and was removed: because frontmatter outranks it, a model set in both places meant the JSON silently lost while still reading as authoritative. The sibling `subagents.defaultModel` key was removed at the same time — nothing ever read it, so a role with no model falls through to pi's default rather than to that value.
+
+A model must name its provider. See [why a child's model must name its provider](#why-a-childs-model-must-name-its-provider).
 
 Smoke tests inside Pi:
 
