@@ -178,6 +178,18 @@ This replaced `new-split right`, which gave every child a slice of the window. T
 
 When a child finishes or fails, its tab closes automatically. Both cases close because the result — including the error text — has already been delivered to the parent, and the full transcript stays in the child's session file under `~/.pi/agent/sessions/cmux-interactive-subagents/`.
 
+### Knowing children are there at all
+
+Since nothing is on screen, the footer carries a badge while children are alive:
+
+| footer | meaning |
+| --- | --- |
+| *(nothing)* | No child is running. Finished children are not news — their result is already in the conversation. |
+| `⚡ 2 subagents` | Work is in flight and needs nothing from you. |
+| `⏸ 1 waiting · ⚡ 1 running` | Amber. A child called `ask_question` and **has stopped until answered** — reply with `subagent_message` or `/fleet` → Message it. |
+
+Waiting is separated from running because only one of them costs you anything: a waiting child burns wall-clock doing nothing. The badge repaints from the same one-second poll that collects results, so it stays honest between turns, and it clears on session shutdown — children can outlive the session, but the footer belongs to it.
+
 ### Rotating a child into view: `/fleet`
 
 Because children are invisible, `/fleet` is how you reach one. It lists every child in the session with its status, agent, age and task, waiting children first, since those are blocked on you.

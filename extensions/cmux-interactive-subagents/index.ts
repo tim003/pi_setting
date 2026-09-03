@@ -19,7 +19,7 @@ import {
   sendLongCommand,
   surfaceExists,
 } from "./src/cmux.ts";
-import { closesTabOnExit, fleetRows } from "./src/fleet.ts";
+import { closesTabOnExit, fleetRows, statusBadge } from "./src/fleet.ts";
 import { askText, choose } from "./src/ui/select.ts";
 import { buildPiCommand, normalizeMessageForTui, scriptWithExitTrap } from "./src/launch.ts";
 import { makeChildSessionPath, readFinalAssistantMessage, readLoadout, writeLoadout, type ChildLoadout } from "./src/session.ts";
@@ -100,6 +100,20 @@ export default function (pi: ExtensionAPI) {
     return cachedPane;
   }
 
+  // Held from session_start so the poll can repaint the footer between
+  // turns, when no handler is running and there is no ctx to hand around.
+  let uiCtx: any = null;
+
+  // Leading space keeps this left of Pi's own footer entries, which are
+  // joined in registration order.
+  const STATUS_KEY = " subagents";
+
+  function refreshBadge() {
+    if (!uiCtx?.hasUI) return;
+    const badge = statusBadge(children.values());
+    uiCtx.ui.setStatus(STATUS_KEY, badge ? uiCtx.ui.theme.fg(badge.tone, badge.text) : undefined);
+  }
+
   function listAgents(ctx: any): AgentDefinition[] {
     return discoverAgents(ctx.cwd, agentDir());
   }
@@ -152,15 +166,21 @@ export default function (pi: ExtensionAPI) {
         }
       }
     }
+    refreshBadge();
   }
 
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event: any, ctx: any) => {
+    uiCtx = ctx;
+    refreshBadge();
     if (!watcher) watcher = setInterval(pollChildren, 1000);
   });
 
   pi.on("session_shutdown", () => {
     if (watcher) clearInterval(watcher);
     watcher = null;
+    // Children outlive this session; the footer belongs to it and must not
+    // be left behind claiming work is in flight.
+    if (uiCtx?.hasUI) uiCtx.ui.setStatus(STATUS_KEY, undefined);
   });
 
   pi.registerTool({
@@ -238,6 +258,9 @@ export default function (pi: ExtensionAPI) {
         startedAt: Date.now(),
       };
       children.set(validation.name, child);
+      // Paint immediately: a spawn with no visible tab and no footer looks
+      // like nothing happened for up to a second.
+      refreshBadge();
       return toolResult(`Started subagent ${validation.name} (${validation.agent}) in ${surface}.`, child);
     },
     renderCall(args, theme) {
@@ -271,6 +294,7 @@ export default function (pi: ExtensionAPI) {
 
       if (mode.mode === "steer") {
         child.status = "running";
+        refreshBadge();
         sendCommand(child.surface, normalizeMessageForTui(message));
         return toolResult(`Message delivered to running subagent ${name}.`, { name, status: "steered" });
       }
@@ -356,6 +380,7 @@ export default function (pi: ExtensionAPI) {
         if (!message) return undefined;
         sendCommand(child.surface, normalizeMessageForTui(message));
         child.status = "running";
+        refreshBadge();
         return `Sent to ${child.name}.`;
       }
 

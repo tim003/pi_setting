@@ -24,6 +24,41 @@ export type FleetRow = {
  * transcript lives in the session file, so its tab is pure clutter. A failed
  * one is the same: the error text is delivered too. Both give the tab back.
  */
+export type StatusBadge = { text: string; tone: "accent" | "warning" };
+
+/**
+ * The footer line shown while children are alive.
+ *
+ * Children run in unfocused tabs now, so nothing on screen says work is
+ * happening; without this the session looks idle while three agents edit
+ * files. Waiting is separated from running because the two cost the user
+ * different things: a running child needs nothing, a waiting one has
+ * stopped and stays stopped until it is answered.
+ *
+ * Returns null when there is nothing live, which the caller passes to
+ * setStatus as undefined to clear the badge.
+ */
+export function statusBadge(children: Iterable<{ status: ChildStatus }>): StatusBadge | null {
+  let running = 0;
+  let waiting = 0;
+  for (const child of children) {
+    if (child.status === "running") running += 1;
+    else if (child.status === "waiting") waiting += 1;
+  }
+
+  if (waiting > 0) {
+    const parts = [`⏸ ${waiting} waiting`];
+    if (running > 0) parts.push(`⚡ ${running} running`);
+    return { text: parts.join(" · "), tone: "warning" };
+  }
+
+  if (running > 0) {
+    return { text: `⚡ ${running} subagent${running === 1 ? "" : "s"}`, tone: "accent" };
+  }
+
+  return null;
+}
+
 export function closesTabOnExit(status: ChildStatus): boolean {
   return status === "finished" || status === "failed";
 }
