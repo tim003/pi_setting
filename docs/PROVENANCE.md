@@ -36,6 +36,23 @@ So upstream files will not run against current Pi without that rename. Every
 | `cmux-interactive-subagents` | **originates here** | n/a — upstream ships only a stub pointing at the separate `pi-interactive-subagents` repo |
 | `parked-issues` | **originates here** | n/a |
 
+### Files vendored between two local extensions
+
+`parked-issues` and `cmux-interactive-subagents` each carry byte-identical copies of four files:
+
+```text
+src/ui/frame.ts        the bordered, padded popup box
+src/ui/select.ts       choose()/askText() over the shared UI mutex
+test/frame.test.mjs
+test/select.test.mjs
+```
+
+`parked-issues` is where they were written; `cmux-interactive-subagents` copied them when `/fleet` needed the same popup. They are duplicated rather than shared because each extension is rsync-deployed on its own with its own `node_modules`, so a cross-extension import would not resolve once installed.
+
+The hazard is a rendering fix applied to one copy and not the other — silently, since both suites would still pass. So `test/vendored.test.mjs` in **both** extensions compares the four files and fails with instructions when they differ. Either suite catches it, whichever extension you happen to have open. When the sibling directory is absent, which is the normal installed shape, the checks skip rather than fail.
+
+Edit both copies together. If a third extension ever needs a popup, that is the point to reconsider sharing rather than adding a third copy.
+
 ### The one behavioural divergence: `bash-guard`
 
 Upstream classifies commands as `high` or `medium` severity but has **no gate** —

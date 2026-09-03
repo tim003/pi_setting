@@ -1,3 +1,13 @@
+/*
+ * VENDORED: an identical copy of this file lives in both
+ * extensions/parked-issues/ and extensions/cmux-interactive-subagents/.
+ *
+ * Each extension is deployed on its own by rsync with its own node_modules, so
+ * a shared import would break that. Edit one copy and the other keeps the old
+ * bug; test/vendored.test.mjs in both extensions fails when they diverge, so
+ * apply changes to both and let the tests confirm it.
+ */
+
 /**
  * Overlay selection popup.
  *
