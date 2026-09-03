@@ -69,7 +69,7 @@ Required parts of the setup, installed with `pi install ...` into `~/.pi/agent/n
 
 ### Subagent definitions
 
-`agents/` holds the six Markdown agent definitions (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) that the local cmux provider reads from `~/.pi/agent/agents/`.
+`agents/` holds the six Markdown agent definitions (`delegate`, `oracle`, `researcher`, `reviewer`, `scout`, `worker`) that the local cmux provider reads from `~/.pi/agent/agents/`, which is a symlink to this directory. Each file carries its own `model:` and `thinking:` in frontmatter, so editing the file here changes what the role runs on immediately — no deploy step, though a running session needs `/reload`. See [docs/OPERATIONS.md](docs/OPERATIONS.md#which-model-a-role-runs-on).
 
 See [`docs/OPERATIONS.md`](docs/OPERATIONS.md) for the full extension/skill/tool inventory.
 

@@ -17,11 +17,30 @@ pi install git:github.com/amosblomqvist/pi-observational-memory
 # /chrome onboard, then Load unpacked in chrome://extensions. See docs/OPERATIONS.md.
 pi install npm:pi-chrome
 
-mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$PI_DIR/agents" "$HOME/Desktop/pi-inbox"
+mkdir -p "$PI_DIR/extensions" "$PI_DIR/skills" "$HOME/Desktop/pi-inbox"
 
-# Subagent definitions for the local cmux provider. They live in the global
-# agent dir, which the provider reads directly, so no extra package is needed.
-cp "$REPO_DIR/agents/"*.md "$PI_DIR/agents/"
+# Subagent definitions for the local cmux provider. They live in the global agent
+# dir, which the provider reads directly, so no extra package is needed.
+#
+# Symlinked rather than copied on purpose: each role's model lives in its own
+# markdown frontmatter, so these are files that get edited and tuned, not static
+# assets. Two copies meant an edit could be made in the repo and silently not be
+# what pi loaded. One file, git-tracked, no deploy step.
+if [ -L "$PI_DIR/agents" ]; then
+	if [ "$(readlink "$PI_DIR/agents")" != "$REPO_DIR/agents" ]; then
+		ln -sfn "$REPO_DIR/agents" "$PI_DIR/agents"
+		echo "repointed $PI_DIR/agents -> $REPO_DIR/agents"
+	fi
+elif [ -d "$PI_DIR/agents" ]; then
+	# Never delete a real directory that may hold agents this repo does not track.
+	BACKUP="$PI_DIR/agents.replaced-by-symlink.$(date +%Y%m%d-%H%M%S)"
+	mv "$PI_DIR/agents" "$BACKUP"
+	ln -s "$REPO_DIR/agents" "$PI_DIR/agents"
+	echo "moved the previous agents dir to $BACKUP and symlinked to $REPO_DIR/agents"
+	echo "check it for agent definitions this repo does not track, then delete it"
+else
+	ln -s "$REPO_DIR/agents" "$PI_DIR/agents"
+fi
 
 for extension in ask-user-question host-safety-guard prompt-snippets web-fetch bash-guard browser parked-issues; do
   rm -rf "$PI_DIR/extensions/$extension"

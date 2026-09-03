@@ -150,12 +150,15 @@ command -v cmux
 
 Symptom: `subagents_list` returns nothing.
 
-The provider reads agent definitions from `~/.pi/agent/agents/`. Confirm they are present, and reinstall them from this repo if not:
+The provider reads agent definitions from `~/.pi/agent/agents/`, which is a **symlink** to `agents/` in this repo. Confirm the link resolves and the files are visible through it:
 
 ```bash
+readlink ~/.pi/agent/agents      # expect: <repo>/agents
 ls ~/.pi/agent/agents/
-./scripts/install-packages.sh
+./scripts/install-packages.sh    # recreates or repoints the symlink
 ```
+
+A dangling link is the likely cause if the repo has been moved or renamed — rerunning the installer repoints it.
 
 Then `/reload` or restart Pi.
 
