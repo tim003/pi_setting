@@ -134,6 +134,25 @@ type Targets = {
  * skipped; flags are skipped too. Everything else a shell would hand to the
  * program is treated as a path, because to the program that is what it is.
  */
+/**
+ * The home directory the shell would substitute for a leading tilde.
+ *
+ * Returns null when the tilde names someone else's home (`~root/x`), which we
+ * cannot resolve here and must not guess at: guessing wrong in the permissive
+ * direction releases a command that leaves the project entirely.
+ *
+ * A quoted tilde is not expanded by a real shell, but shell-quote yields the
+ * same string for `~/.ssh` and `"~/.ssh"`, so both are read as home. The cost
+ * of that conflation is one extra prompt for a file literally named `~`; the
+ * cost of the opposite reading is deleting out of the home directory unasked.
+ */
+function expandTilde(token: string): string | null {
+	if (token === "~") return homedir();
+	if (token.startsWith("~/")) return join(homedir(), token.slice(2));
+	if (token.startsWith("~")) return null;
+	return token;
+}
+
 function extractTargets(command: string): Targets {
 	let tokens: unknown[];
 	try {
@@ -158,7 +177,12 @@ function extractTargets(command: string): Targets {
 				continue;
 			}
 			if (token.startsWith("-")) continue;
-			paths.push(token);
+			const expanded = expandTilde(token);
+			if (expanded === null) {
+				unresolvable = true;
+				continue;
+			}
+			paths.push(expanded);
 			continue;
 		}
 
@@ -172,7 +196,14 @@ function extractTargets(command: string): Targets {
 			}
 			// A glob is judged by the literal directory it is anchored in.
 			const literal = record.pattern.split(/[*?[]/)[0];
-			if (literal) paths.push(literal);
+			if (literal) {
+				const expanded = expandTilde(literal);
+				if (expanded === null) {
+					unresolvable = true;
+					continue;
+				}
+				paths.push(expanded);
+			}
 			continue;
 		}
 

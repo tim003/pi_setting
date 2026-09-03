@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -100,6 +100,62 @@ test("deleting outside a trusted project still asks", () => {
 test("nothing is auto-approved when no project is trusted", () => {
 	const dir = scratch();
 	assert.equal(isAutoApproved("rm -rf build", { cwd: dir, trustedRoots: [] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+// The shell expands a leading ~ before bash-guard ever sees the command run.
+// If the guard treats it as an ordinary folder name it resolves the tilde
+// relative to cwd, decides the target is inside the project, and releases a
+// command that actually deletes out of the home directory.
+test("a tilde path leaving the project still asks, even when trusted", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved("rm -rf ~/.ssh", { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("a bare tilde is the home directory, not a file in the project", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved("rm -rf ~", { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+// Quoting suppresses expansion in a real shell, but shell-quote hands back the
+// same string either way, so the guard cannot tell them apart. It must assume
+// the dangerous reading; the cost is only an extra prompt.
+test("a quoted tilde is read as home too, erring towards asking", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved('rm -rf "~/.ssh"', { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+test("another user's home cannot be resolved here, so it asks", () => {
+	const dir = scratch();
+	assert.equal(isAutoApproved("rm -rf ~root/x", { cwd: dir, trustedRoots: [dir] }), false);
+	rmSync(dir, { recursive: true, force: true });
+});
+
+// Expanding the tilde must not become a blanket refusal: a tilde path that
+// genuinely lands inside the trusted project is still ordinary work.
+test("a tilde path that lands inside the trusted project is released", () => {
+	const home = realpathSync(homedir());
+	const dir = mkdtempSync(join(home, ".bash-guard-trust-"));
+	try {
+		mkdirSync(join(dir, "build"), { recursive: true });
+		const rel = dir.slice(home.length + 1);
+		assert.equal(
+			isAutoApproved(`rm -rf ~/${rel}/build`, { cwd: dir, trustedRoots: [dir] }),
+			true,
+		);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// Only a leading bare tilde is expanded by the shell; ./~ is a real filename.
+test("a file actually named ~ inside the project is still released", () => {
+	const dir = scratch();
+	mkdirSync(join(dir, "~"), { recursive: true });
+	assert.equal(isAutoApproved("rm -rf ./~", { cwd: dir, trustedRoots: [dir] }), true);
 	rmSync(dir, { recursive: true, force: true });
 });
 
