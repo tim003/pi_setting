@@ -6,13 +6,12 @@ Update, rollback, and troubleshooting notes for this Pi setup.
 
 ```bash
 pi update --extensions
-./scripts/patch-pi-claude-auth-cli-version.sh
 ./scripts/reapply-om-local-fixes.sh
 ```
 
 Then run `/reload` inside Pi or restart Pi.
 
-`pi update --extensions` touches installed packages and can overwrite the local `pi-claude-auth` CLI-version patch. Re-run the patch script afterwards. It does not overwrite the local extensions, agents, or skills this repo installs.
+`pi update --extensions` updates package-installed resources, including `pi-claude-oauth-adapter`. It does not overwrite the local extensions, agents, or skills this repo installs.
 
 Git-installed packages are updated with `git reset --hard @{upstream}`, which discards local commits. `pi-observational-memory` carries two — see [local package fixes](#local-package-fixes) — so re-run its script too. Both scripts are idempotent and safe to run when nothing needs doing.
 
@@ -80,12 +79,14 @@ Recreate them with:
 
 ## Auth checks
 
-Claude Code / Anthropic:
+Anthropic OAuth / Claude Pro/Max:
+
+```text
+/login
+# Choose Claude Pro/Max, then choose an Anthropic model with /model.
+```
 
 ```bash
-claude --version
-claude auth login --claudeai
-./scripts/patch-pi-claude-auth-cli-version.sh
 pi auth check --provider anthropic --model claude-haiku-4-5 --json
 ```
 

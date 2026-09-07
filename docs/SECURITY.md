@@ -34,17 +34,11 @@ ssh -T git@github.com
 
 Any key you make available to Pi has the same repository access it has for you.
 
-## Claude Code / pi-claude-auth
+## Anthropic OAuth / pi-claude-oauth-adapter
 
-`pi-claude-auth` uses local Claude Code OAuth credentials. Keep Claude Code authenticated with your own account:
+Pi's built-in Anthropic OAuth owns the Claude Pro/Max sign-in flow. `pi-claude-oauth-adapter` is a compatibility layer: it modifies OAuth request handling and prompt context, but does not read or implement credentials itself.
 
-```bash
-claude auth login --claudeai
-```
-
-Claude Code auto-updates independently from `pi-claude-auth`. `scripts/install-packages.sh` applies a local patch to installed `pi-claude-auth` so normal `pi` startup derives the Claude Code user-agent and billing-header version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset. Re-run `./scripts/patch-pi-claude-auth-cli-version.sh` after `pi update` if the package is overwritten.
-
-If a Claude Code update changes auth or billing behavior, verify with a small Anthropic model before doing expensive work.
+Inside Pi, use `/login` and choose **Claude Pro/Max**. If an OAuth or billing behavior change is suspected, verify it with a small Anthropic model before doing expensive work.
 
 ## Tailscale and VPS
 

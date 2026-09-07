@@ -26,7 +26,7 @@ Inside Pi:
 
 Configured in `settings/settings.example.json` and installed by `scripts/install-packages.sh`:
 
-- `npm:pi-claude-auth` — Anthropic auth via Claude Code OAuth credentials.
+- `npm:pi-claude-oauth-adapter` — compatibility adapter for Pi's built-in Anthropic OAuth / Claude Pro/Max sessions.
 - `git:github.com/obra/superpowers` — process extension plus Superpowers skills.
 - `npm:pi-web-access` — web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — memory extension; off by default.
@@ -38,7 +38,7 @@ Package-installed extensions are required parts of this setup. They load from `~
 
 | Source | Extension status | Purpose |
 |---|---|---|
-| `npm:pi-claude-auth` | enabled | Seeds Anthropic auth from Claude Code credentials. |
+| `npm:pi-claude-oauth-adapter` | enabled | Adapts Pi's built-in Anthropic OAuth / Claude Pro/Max sessions for Claude compatibility. |
 | `git:github.com/obra/superpowers` | enabled | Loads Superpowers skill behavior and commands. |
 | `npm:pi-web-access` | enabled | Provides `web_search`, `fetch_content`, `source_check`, and `get_search_content` tooling. |
 | `git:github.com/amosblomqvist/pi-observational-memory` | enabled | Provides `/om` observational-memory commands and workers. |
@@ -170,7 +170,7 @@ Requirements:
 - Start Pi from inside cmux when using interactive subagents.
 - `CMUX_SOCKET_PATH` must be set.
 - `~/.pi/agent/agents/` must contain the six agent definitions; without them `subagents_list` is empty.
-- Keep `pi-claude-auth` installed; the local child launcher explicitly loads it so Anthropic child Pi processes inherit Claude Code auth while other extensions remain isolated.
+- Keep `pi-claude-oauth-adapter` installed; the local child launcher explicitly loads it so Anthropic OAuth compatibility behavior remains available while other extensions stay isolated.
 
 ### Where a child appears
 
@@ -227,7 +227,7 @@ If that lookup fails, the check degrades to the structural rule — still provid
 
 ### What a child is allowed to do
 
-Children launch with `--no-extensions`, so they get only what the launcher names: `pi-claude-auth`, **`bash-guard`**, and the child helper. bash-guard is on that list because a child has no UI to approve anything in — without it the least supervised sessions on the machine were also the only unguarded ones, and a subagent would run `rm -rf` unblocked.
+Children launch with `--no-extensions`, so they get only what the launcher names: `pi-claude-oauth-adapter`, **`bash-guard`**, and the child helper. bash-guard is on that list because a child has no UI to approve anything in — without it the least supervised sessions on the machine were also the only unguarded ones, and a subagent would run `rm -rf` unblocked.
 
 A child therefore behaves like a session that can never be asked:
 

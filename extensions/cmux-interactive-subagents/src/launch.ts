@@ -16,8 +16,8 @@ export function normalizeMessageForTui(message: string): string {
   return message.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n/g, "\\n");
 }
 
-function extensionPathIfInstalled(agentDir: string, packageName: string): string | undefined {
-  const path = join(agentDir, "npm", "node_modules", packageName, "src", "index.ts");
+function packageExtensionPathIfInstalled(agentDir: string, packageName: string, entrypoint: string): string | undefined {
+  const path = join(agentDir, "npm", "node_modules", packageName, entrypoint);
   return existsSync(path) ? path : undefined;
 }
 
@@ -38,7 +38,7 @@ export function buildPiCommand(options: BuildPiCommandOptions): string {
   // inside a granted project, blocks everywhere else for want of anything able to
   // approve, and cannot push at all.
   const extensionArgs = [
-    extensionPathIfInstalled(resolvedAgentDir, "pi-claude-auth"),
+    packageExtensionPathIfInstalled(resolvedAgentDir, "pi-claude-oauth-adapter", "extensions/index.ts"),
     localExtensionIfInstalled(resolvedAgentDir, "bash-guard"),
     childHelperPath,
   ].filter((path): path is string => Boolean(path));

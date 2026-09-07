@@ -8,8 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PI_DIR="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 
-pi install npm:pi-claude-auth
-"$SCRIPT_DIR/patch-pi-claude-auth-cli-version.sh"
+pi install npm:pi-claude-oauth-adapter
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory
@@ -63,9 +62,9 @@ for extension in ask-user-question host-safety-guard web-fetch bash-guard browse
 done
 
 # Install the local cmux subagent provider, which registers the `subagent` tool.
-# Its launcher explicitly loads pi-claude-auth in child Pi processes before the
-# child-helper extension so Anthropic/Claude Code OAuth works even with
-# --no-extensions isolation.
+# Its launcher explicitly loads pi-claude-oauth-adapter in child Pi processes
+# before the child-helper extension so Anthropic OAuth compatibility behavior
+# remains available under --no-extensions isolation.
 rm -rf "$PI_DIR/extensions/cmux-interactive-subagents"
 cp -R "$REPO_DIR/extensions/cmux-interactive-subagents" "$PI_DIR/extensions/cmux-interactive-subagents"
 (

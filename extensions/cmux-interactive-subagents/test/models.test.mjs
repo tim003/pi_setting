@@ -21,11 +21,11 @@ test("parseAvailableModels reads provider and id pairs", () => {
 });
 
 test("parseAvailableModels skips the header, blanks and stray warnings", () => {
-  const noisy = `pi-claude-auth: Claude credentials are expired.\n${SAMPLE}\n`;
+  const noisy = `pi-claude-oauth-adapter: Claude OAuth setup is incomplete.\n${SAMPLE}\n`;
   const parsed = parseAvailableModels(noisy);
   assert.equal(parsed.length, 3);
   assert.ok(!parsed.some((m) => m.provider === "provider"));
-  assert.ok(!parsed.some((m) => m.provider.startsWith("pi-claude-auth")));
+  assert.ok(!parsed.some((m) => m.provider.startsWith("pi-claude-oauth-adapter")));
 });
 
 test("parseAvailableModels returns empty for junk", () => {

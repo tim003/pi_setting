@@ -51,9 +51,7 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 
 ### Scripts
 
-- `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, extension dependencies, and the local `pi-claude-auth` CLI-version patch.
-- `scripts/patch-pi-claude-auth-cli-version.sh` — patch installed `pi-claude-auth` so normal `pi` startup derives the Claude Code billing/user-agent version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset.
-- `scripts/test-pi-claude-auth-patch.sh` — regression test for the local `pi-claude-auth` patch.
+- `scripts/install-packages.sh` — install Pi packages, local extensions, subagent definitions, selected skills, and extension dependencies.
 - `scripts/reapply-om-local-fixes.sh` — reapply the local `pi-observational-memory` fixes (observer coverage spans, NUL bytes in worker argv) from `patches/` after `pi update` resets the clone. See [docs/MAINTENANCE.md](docs/MAINTENANCE.md#local-package-fixes).
 - `scripts/check-youtube-transcript-deps.sh` — check transcript skill dependencies.
 
@@ -61,7 +59,7 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 
 Required parts of the setup, installed with `pi install ...` into `~/.pi/agent/npm` or `~/.pi/agent/git` and enabled via `settings.json`. Their source is deliberately not copied into `extensions/` — see [why](INSTALL.md#where-extensions-live-and-why).
 
-- `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth.
+- `npm:pi-claude-oauth-adapter` — enabled compatibility adapter for Pi's built-in Anthropic OAuth / Claude Pro/Max sessions.
 - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills.
 - `npm:pi-web-access` — enabled web access extension/tools.
 - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session.
@@ -112,8 +110,7 @@ Extension `node_modules/` directories are also excluded. Recreate them with:
 ## Current package setup
 
 ```bash
-pi install npm:pi-claude-auth
-./scripts/patch-pi-claude-auth-cli-version.sh
+pi install npm:pi-claude-oauth-adapter
 pi install git:github.com/obra/superpowers
 pi install npm:pi-web-access
 pi install git:github.com/amosblomqvist/pi-observational-memory

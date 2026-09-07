@@ -8,7 +8,7 @@ It does **not** copy secrets. You must authenticate with your own Claude, GitHub
 
 - Pi running directly on macOS.
 - Pi package-installed extensions and resources configured as first-class parts of this setup:
-  - `npm:pi-claude-auth` — enabled extension for Claude Code-backed Anthropic auth
+  - `npm:pi-claude-oauth-adapter` — enabled compatibility adapter for Pi's built-in Anthropic OAuth / Claude Pro/Max sessions
   - `git:github.com/obra/superpowers` — enabled extension plus Superpowers skills
   - `npm:pi-web-access` — enabled extension providing web access tools
   - `git:github.com/amosblomqvist/pi-observational-memory` — enabled memory extension, off by default per session
@@ -55,7 +55,7 @@ This setup has **two** kinds of extensions. Both are required. They are installe
 
 ### 1. Package-installed extensions
 
-`pi-claude-auth`, `superpowers`, `pi-web-access`, `observational-memory`, and `pi-chrome`.
+`pi-claude-oauth-adapter`, `superpowers`, `pi-web-access`, `observational-memory`, and `pi-chrome`.
 
 `pi-chrome` is the one package `scripts/install-packages.sh` cannot fully set up: Chrome requires a human to load the bundled extension via **Load unpacked**. Run `/chrome onboard` afterwards and follow [`docs/OPERATIONS.md`](docs/OPERATIONS.md#chrome-profile-control-pi-chrome). Until that is done, the `chrome_*` tools are present but cannot connect.
 
@@ -200,19 +200,9 @@ ls ~/.pi/agent/agents/
 
 ## 6. Authenticate locally
 
-### Claude / Anthropic through Claude Code
+### Anthropic OAuth / Claude Pro/Max
 
-Install Claude Code if needed and authenticate with your own account:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude auth login --claudeai
-claude --version
-```
-
-`pi-claude-auth` reads your Claude Code OAuth credentials so Pi can use Anthropic models without a separate Anthropic API key.
-
-`scripts/install-packages.sh` also applies this repo's local `pi-claude-auth` patch. After the patch, normal `pi` startup derives the Claude Code user-agent and billing-header version from `claude --version` when `ANTHROPIC_CLI_VERSION` is unset, while still preserving that environment override if you set it explicitly.
+Pi has built-in Anthropic OAuth. `pi-claude-oauth-adapter` is the compatibility layer for Claude Pro/Max sessions: it adds the required OAuth billing header and adapts Pi's prompt handling. Inside Pi, run `/login`, choose **Claude Pro/Max**, select an Anthropic model in `/model`, and use Pi normally.
 
 Smoke test:
 
@@ -220,7 +210,7 @@ Smoke test:
 pi auth check --provider anthropic --model claude-haiku-4-5 --json
 ```
 
-If that fails, run `claude` once interactively and confirm Claude Code itself is authenticated before debugging Pi.
+If that fails, repeat the Pi `/login` flow and confirm the selected provider is `anthropic` before debugging the adapter.
 
 ### GitHub SSH
 
@@ -249,7 +239,7 @@ cd ~/pi_setting
 pi
 ```
 
-Normal `pi` startup is enough because `scripts/install-packages.sh` patched installed `pi-claude-auth` directly.
+Normal `pi` startup loads the installed `pi-claude-oauth-adapter` package from `settings.json`.
 
 Inside Pi, run:
 
@@ -517,10 +507,9 @@ Update Pi packages:
 
 ```bash
 pi update --extensions
-./scripts/patch-pi-claude-auth-cli-version.sh
 ```
 
-Then run `/reload` or restart Pi. The patch step reapplies this repo's local `pi-claude-auth` CLI-version fix if the package update overwrote it.
+Then run `/reload` or restart Pi so the updated package code is loaded.
 
 Update Pi itself:
 

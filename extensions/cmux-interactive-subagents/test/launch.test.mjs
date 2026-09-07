@@ -29,11 +29,11 @@ test("buildPiCommand passes agent body text to append-system-prompt, not a file 
   assert.match(command, /--tools 'read,bash,ask_question'/);
 });
 
-test("buildPiCommand explicitly loads pi-claude-auth when installed", () => {
+test("buildPiCommand explicitly loads pi-claude-oauth-adapter when installed", () => {
   const agentDir = mkdtempSync(join(tmpdir(), "cmux-agent-dir-"));
-  const claudeAuthPath = join(agentDir, "npm/node_modules/pi-claude-auth/src/index.ts");
-  mkdirSync(join(agentDir, "npm/node_modules/pi-claude-auth/src"), { recursive: true });
-  writeFileSync(claudeAuthPath, "// fake extension\n");
+  const claudeOAuthAdapterPath = join(agentDir, "npm/node_modules/pi-claude-oauth-adapter/extensions/index.ts");
+  mkdirSync(join(agentDir, "npm/node_modules/pi-claude-oauth-adapter/extensions"), { recursive: true });
+  writeFileSync(claudeOAuthAdapterPath, "// fake extension\n");
 
   const command = buildPiCommand({
     childHelperPath: "/ext/child-helper.ts",
@@ -47,7 +47,7 @@ test("buildPiCommand explicitly loads pi-claude-auth when installed", () => {
     piCodingAgentDir: agentDir,
   });
 
-  assert.match(command, new RegExp(`--no-extensions -e '${claudeAuthPath}' -e '/ext/child-helper\\.ts'`));
+  assert.match(command, new RegExp(`--no-extensions -e '${claudeOAuthAdapterPath}' -e '/ext/child-helper\\.ts'`));
 });
 
 /**
