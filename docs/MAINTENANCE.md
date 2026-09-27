@@ -138,6 +138,21 @@ codex login status
 
 Pi OpenAI/Codex provider auth is separate from the external `codex` CLI login.
 
+## Anthropic model-version errors
+
+`anthropic/claude-opus-5-5` was confirmed working in Pi by the user after restarting Pi and Terminal on 2026-09-28. At the time, local inspection showed Pi 0.87.1, `pi-claude-oauth-adapter` 0.2.2, and a separate Claude Code CLI reporting 2.1.278. This confirms the earlier “Claude Code 2.1.263 does not support this model; version 2.1.280 or newer is required” error was no longer blocking this Pi session; it does **not** establish which restart, update, or adapter behavior resolved it.
+
+If the error recurs, check the selected provider/model and installed versions before changing auth:
+
+```bash
+pi --version
+pi --list-models | grep claude-opus-5-5
+node -p 'require(process.env.HOME+"/.pi/agent/npm/node_modules/pi-claude-oauth-adapter/package.json").version'
+claude --version  # separate CLI; not proof of the version Pi sends
+```
+
+`pi-claude-oauth-adapter` can learn a minimum required Claude Code version from a rejection and cache it; an explicit `PI_CLAUDE_CODE_VERSION` override pins the version and disables that learning. Check for an override and the adapter's current documentation if version negotiation is suspected. Restart Pi after a package update so the running process loads it. Do not re-login, copy credentials, or patch a version string based solely on the CLI version warning.
+
 ## cmux subagent troubleshooting
 
 Symptom: no child pane or subagent launch fails.

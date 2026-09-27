@@ -22,6 +22,10 @@ Inside Pi:
 /browser off     # disable browser tools
 ```
 
+### Claude Opus 5.5 in Pi
+
+Select `anthropic/claude-opus-5-5` via `/model`. On 2026-09-28, the user confirmed it working after restarting Pi and Terminal; the installed Pi model list also includes it. Pi uses its built-in Anthropic OAuth with `pi-claude-oauth-adapter` for Claude Pro/Max. Do not assume that the version printed by the separate `claude` CLI is the version Pi advertises through the adapter. If a model-version error returns, see [model-version troubleshooting](MAINTENANCE.md#anthropic-model-version-errors) before changing credentials.
+
 ## Installed packages
 
 Configured in `settings/settings.example.json` and installed by `scripts/install-packages.sh`:
