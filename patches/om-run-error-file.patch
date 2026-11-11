@@ -1,0 +1,103 @@
+From 99e1dc9d70c5ab4c2e862e2493b1c15fcf4c7de1 Mon Sep 17 00:00:00 2001
+From: local <local@localhost>
+Date: Wed, 2 Sep 2026 02:42:56 +0800
+Subject: [PATCH] local: persist observer/consolidator failures to
+ .runs/<runId>.error.txt
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Toasts (ui.notify) are ephemeral and never written to the transcript, and the
+package's debugLog() is dead code, so a transient 'observer failed' was
+unrecoverable. Add writeRunError() + runErrorPath() and call them in both
+worker catch blocks so failures land durably on disk for diagnosis.
+
+Local vault modification — not upstream.
+---
+ src/hooks/consolidator-trigger.ts |  2 ++
+ src/hooks/observer-trigger.ts     |  5 ++++-
+ src/spawn/runs.ts                 | 25 +++++++++++++++++++++++++
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/src/hooks/consolidator-trigger.ts b/src/hooks/consolidator-trigger.ts
+index 9e820ef..6569f7d 100644
+--- a/src/hooks/consolidator-trigger.ts
++++ b/src/hooks/consolidator-trigger.ts
+@@ -32,6 +32,7 @@ import { renderIndexFile } from "../memory/index-render.js";
+ import { atomicWrite, indexPath, listTopics, readJourney } from "../memory/paths.js";
+ import type { Runtime } from "../runtime.js";
+ import { buildWorkerArgv, buildWorkerEnv, spawnWorker } from "../spawn/launch.js";
++import { writeRunError } from "../spawn/runs.js";
+ import { recordWorkerCost } from "./observer-trigger.js";
+ 
+ type TriggerCtx = {
+@@ -150,6 +151,7 @@ async function dispatchConsolidator(
+ 		const message = error instanceof Error ? error.message : String(error);
+ 		runtime.lastWorkerError = message;
+ 		runtime.status.workerError(runId);
++		writeRunError(runtime.memoryRoot, runId, "consolidator", message);
+ 		if (ctx.hasUI) ctx.ui?.notify(`om: consolidator failed: ${message}`, "error");
+ 	} finally {
+ 		runtime.consolidatorController = undefined;
+diff --git a/src/hooks/observer-trigger.ts b/src/hooks/observer-trigger.ts
+index 732850e..0679867 100644
+--- a/src/hooks/observer-trigger.ts
++++ b/src/hooks/observer-trigger.ts
+@@ -17,7 +17,7 @@ import {
+ } from "../ledger/index.js";
+ import type { Runtime } from "../runtime.js";
+ import { buildWorkerArgv, buildWorkerEnv, spawnWorker } from "../spawn/launch.js";
+-import { readObserverResult, readWorkerCost, runCostPath, runResultPath } from "../spawn/runs.js";
++import { readObserverResult, readWorkerCost, runCostPath, runResultPath, writeRunError } from "../spawn/runs.js";
+ 
+ type TriggerCtx = {
+ 	hasUI: boolean;
+@@ -202,6 +202,9 @@ async function dispatchObserver(
+ 		const message = error instanceof Error ? error.message : String(error);
+ 		runtime.lastWorkerError = message;
+ 		runtime.status.workerError(runId);
++		// Persist the failure durably: toasts are ephemeral and never hit the
++		// transcript, so without this a transient "observer failed" is unrecoverable.
++		writeRunError(runtime.memoryRoot, runId, "observer", message);
+ 		// Errors bypass the coalescer: they use a different display level and
+ 		// should never be merged with info lines.
+ 		if (ctx.hasUI) ctx.ui?.notify(`om: observer failed: ${message}`, "error");
+diff --git a/src/spawn/runs.ts b/src/spawn/runs.ts
+index dcceac7..cbed2d7 100644
+--- a/src/spawn/runs.ts
++++ b/src/spawn/runs.ts
+@@ -38,6 +38,31 @@ export function runCostPath(root: string, runId: string): string {
+ 	return join(runsDir(root), `${runId}.cost.json`);
+ }
+ 
++/**
++ * Per-run error file. Written by the orchestrator when a worker fails (non-zero exit,
++ * malformed result, spawn error, etc.). Toasts are ephemeral and never persisted to the
++ * transcript, so this is the durable breadcrumb for post-hoc diagnosis of "observer failed".
++ */
++export function runErrorPath(root: string, runId: string): string {
++	return join(runsDir(root), `${runId}.error.txt`);
++}
++
++/** Best-effort append of a worker failure to its per-run error file. Never throws. */
++export function writeRunError(
++	root: string,
++	runId: string,
++	role: "observer" | "consolidator",
++	message: string,
++): void {
++	try {
++		const path = runErrorPath(root, runId);
++		mkdirSync(dirname(path), { recursive: true });
++		writeFileSync(path, `${new Date().toISOString()} [${role}] ${message}\n`, { encoding: "utf-8", flag: "a" });
++	} catch {
++		// Diagnostics must never affect memory behavior.
++	}
++}
++
+ export type WorkerCostResult = {
+ 	costUsd: number;
+ };
+-- 
+2.46.0
+
