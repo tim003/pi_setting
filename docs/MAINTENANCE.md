@@ -153,6 +153,34 @@ claude --version  # separate CLI; not proof of the version Pi sends
 
 `pi-claude-oauth-adapter` can learn a minimum required Claude Code version from a rejection and cache it; an explicit `PI_CLAUDE_CODE_VERSION` override pins the version and disables that learning. Check for an override and the adapter's current documentation if version negotiation is suspected. Restart Pi after a package update so the running process loads it. Do not re-login, copy credentials, or patch a version string based solely on the CLI version warning.
 
+## Anthropic 429 on every follow-up request (message threads)
+
+**Symptom:** with an Anthropic OAuth (Claude Pro/Max) model, almost every model call after the first shows `429 rate_limit_error`, then succeeds on Pi's automatic retry about two seconds later. The failed call returns in ~350 ms with zero usage. First seen 2026-11-11 right after updating to Pi 1.5.2, with `pi-claude-oauth-adapter` 0.2.2 (its latest release) on `anthropic/claude-fable-5-2`.
+
+**Cause (traced 2026-11-11):** Pi 1.5.x enables Anthropic message threads by default on `api.anthropic.com`. The first request of a thread is a full `create`; follow-ups are `continue` requests that send only the new messages and omit the system prompt and tools. On this setup the `continue` is rejected with 429:
+
+| Request | Result |
+|---|---|
+| thread `create`, full payload | 200 |
+| thread `continue`, 2 messages, no system/tools | 429 in 378 ms, no rate-limit headers (`req_011Cgw5epkvv3Rf2rsNqMbRL`) |
+| Pi's retry: thread `create`, full payload | 200 |
+
+It is not a quota limit (the surrounding 200 responses reported `anthropic-ratelimit-unified-status: allowed` at 3% 7-day utilisation) and not missing model support (the same model succeeds with a full payload). **Why** the server rejects the `continue` is not established; the omitted system prompt carrying the Claude Code identity is a guess, not a finding.
+
+**Workaround in place:** `~/.pi/agent/models.json` disables threads for the built-in `anthropic` provider, so every request sends the full payload (which the retries were already doing):
+
+```json
+{
+  "providers": {
+    "anthropic": { "compat": { "supportsMessageThreads": false } }
+  }
+}
+```
+
+Merge this next to any existing providers and restart Pi. It is not in `settings/models.example.json`, which stays the LM Studio template; add it by hand on a fresh install if the symptom appears.
+
+**Removing the workaround:** threads save upload size and latency, so retest after a Pi or adapter update. Delete the `anthropic` entry, restart Pi, and send a few messages; if the 429/retry pattern returns, put it back. Do not read this pattern as a quota problem: a 429 that clears on an immediate retry, with utilisation in single digits, is not an account limit.
+
 ## cmux subagent troubleshooting
 
 Symptom: no child pane or subagent launch fails.
