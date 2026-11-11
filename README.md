@@ -48,6 +48,7 @@ For the full flow, including Claude Code auth, cmux, Tailscale/VPS checks, and o
 
 - `settings/settings.example.json`
 - `settings/web-search.example.json`
+- `settings/models.example.json` — optional local LM Studio provider for two Qwen models; copy/merge into `~/.pi/agent/models.json` after starting the LM Studio API server. See [local Qwen setup](docs/OPERATIONS.md#local-qwen-models-through-lm-studio). This does not change the default model.
 
 ### Scripts
 

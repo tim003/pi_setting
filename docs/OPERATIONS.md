@@ -22,6 +22,12 @@ Inside Pi:
 /browser off     # disable browser tools
 ```
 
+### Local Qwen models through LM Studio
+
+Start LM Studio's local API server at `http://127.0.0.1:1234` and load the model you want to use (or enable LM Studio's on-demand loading). `~/.pi/agent/models.json` adds an `lmstudio` provider with `qwen/qwen3.8-27b` and `qwen/qwen3.6-35b-a3b`; the reproducible template is [`settings/models.example.json`](../settings/models.example.json). For a fresh install, copy the template to `~/.pi/agent/models.json` **only if that file does not already exist**; otherwise merge its provider entry into the existing file. The `lm-studio` key is a local placeholder, not a credential. This does not change your default model.
+
+Check available IDs with `curl -s http://127.0.0.1:1234/v1/models`, then open `/model` and search for `lmstudio`. `pi --list-models | grep lmstudio` checks Pi's configured entries; it does **not** prove LM Studio has loaded a model or that generation and tool calls work. On 2026-09-28, both entries appeared in Pi; the 27B model answered a Pi text smoke test, while the 35B-A3B model was available in LM Studio but not loaded. Tool calling and generation on the 35B-A3B model have not been tested. If a response fails, load the model in LM Studio first and test a simple prompt and tool call. If LM Studio changes the model IDs or port, update `models.json` and reopen `/model`.
+
 ### Claude Opus 5.5 in Pi
 
 Select `anthropic/claude-opus-5-5` via `/model`. On 2026-09-28, the user confirmed it working after restarting Pi and Terminal; the installed Pi model list also includes it. Pi uses its built-in Anthropic OAuth with `pi-claude-oauth-adapter` for Claude Pro/Max. Do not assume that the version printed by the separate `claude` CLI is the version Pi advertises through the adapter. If a model-version error returns, see [model-version troubleshooting](MAINTENANCE.md#anthropic-model-version-errors) before changing credentials.
